@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Aplicação mobile de apoio aos testes de auditoria de filiais, com funcionamento offline.">
+  <meta name="theme-color" content="#0f4c81">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Auditoria">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Auditoria de Filiais</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script src="assets/js/versao.js"></script>
+  <script type="module" src="assets/js/app.js"></script>
+</head>
+<body>
+  <div id="offline-bar" class="offline-bar" hidden>
+    Sem internet — as fotos continuam salvas no aparelho
+  </div>
+
+  <header id="topbar" class="topbar" hidden>
+    <button id="btn-voltar" class="icon-btn" type="button" aria-label="Voltar" hidden>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="topbar-titulo">
+      <h1 id="titulo">Auditoria</h1>
+      <p id="subtitulo"></p>
+    </div>
+    <button id="btn-sync" class="icon-btn sync-btn" type="button" aria-label="Sincronização">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
+      <span id="badge-pendentes" class="badge" hidden>0</span>
+    </button>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <noscript>
+    <p class="noscript">Esta aplicação precisa de JavaScript habilitado no navegador.</p>
+  </noscript>
+</body>
+</html>
