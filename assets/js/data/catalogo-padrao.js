@@ -10,7 +10,7 @@ export const TESTES = [
     descricao: 'Produtos e embalagens avariados',
     icone: 'alerta',
     rotuloItem: 'Código do produto / NF',
-    itemObrigatorio: false,
+    itemObrigatorio: true,
   },
   {
     id: 'organizacao',

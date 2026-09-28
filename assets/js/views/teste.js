@@ -26,9 +26,11 @@ export async function render(el, { params, sessao, definirCabecalho }) {
     <section class="captura">
       <div class="card">
         <label class="campo">
-          <span>${esc(rotuloItem)} ${teste.itemObrigatorio ? '' : '<em>(opcional)</em>'}</span>
+          <span>${esc(rotuloItem)} ${teste.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
           <input id="item" autocomplete="off" autocapitalize="characters" enterkeyhint="done"
-                 placeholder="Mantido para as próximas fotos">
+                 aria-describedby="item-erro" ${teste.itemObrigatorio ? 'required aria-required="true"' : ''}
+                 placeholder="${teste.itemObrigatorio ? 'Preencha antes de cada foto' : 'Aplicado à próxima foto'}">
+          <small class="campo-erro" id="item-erro" hidden>Preencha este campo antes de tirar a foto.</small>
         </label>
         <label class="campo">
           <span>Observação <em>(opcional)</em></span>
@@ -76,9 +78,9 @@ export async function render(el, { params, sessao, definirCabecalho }) {
       return `
         <button type="button" class="foto" data-id="${esc(r.id)}" aria-label="Abrir foto ${esc(r.itemId)}">
           <img src="${url}" alt="" loading="lazy">
+          <span class="foto-status">${chipStatus(r.status, true)}</span>
           <span class="foto-rodape">
             <span class="foto-item">${esc(r.itemId || formatarDataHora(r.criadoEm))}</span>
-            ${chipStatus(r.status, true)}
           </span>
         </button>`;
     }).join('');
@@ -92,14 +94,29 @@ export async function render(el, { params, sessao, definirCabecalho }) {
     $('#btn-camera span', el).textContent = ocupado ? 'Salvando…' : 'Tirar foto';
   }
 
+  const erroItem = $('#item-erro', el);
+
+  function mostrarErroItem(mostrar) {
+    erroItem.hidden = !mostrar;
+    inputItem.toggleAttribute('aria-invalid', mostrar);
+  }
+
+  /** Campo obrigatório vazio: mostra o erro e devolve o foco ao campo. */
+  function itemValido() {
+    if (!teste.itemObrigatorio || inputItem.value.trim()) return true;
+    mostrarErroItem(true);
+    inputItem.focus();
+    return false;
+  }
+
+  inputItem.addEventListener('input', () => {
+    if (inputItem.value.trim()) mostrarErroItem(false);
+  });
+
   async function processarArquivos(arquivos) {
     if (!arquivos.length) return;
+    if (!itemValido()) return;
     const itemId = inputItem.value.trim();
-    if (teste.itemObrigatorio && !itemId) {
-      toast(`Informe: ${rotuloItem}.`, { tipo: 'erro' });
-      inputItem.focus();
-      return;
-    }
 
     definirOcupado(true);
     let salvas = 0;
@@ -118,6 +135,8 @@ export async function render(el, { params, sessao, definirCabecalho }) {
         });
         salvas++;
       }
+      // Cada foto exige uma nova identificação: os campos voltam em branco.
+      inputItem.value = '';
       inputObs.value = '';
       toast(salvas === 1 ? 'Foto salva no aparelho.' : `${salvas} fotos salvas no aparelho.`, { tipo: 'sucesso' });
     } catch (e) {
@@ -133,6 +152,10 @@ export async function render(el, { params, sessao, definirCabecalho }) {
   }
 
   el.querySelectorAll('input[type=file]').forEach((input) => {
+    // Valida antes de abrir a câmera, para o auditado não perder a foto tirada.
+    input.addEventListener('click', (ev) => {
+      if (!itemValido()) ev.preventDefault();
+    });
     input.addEventListener('change', async () => {
       const arquivos = [...input.files];
       input.value = '';
