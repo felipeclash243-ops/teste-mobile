@@ -333,6 +333,41 @@ input:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset
 .meta dt { color: var(--texto-suave); }
 .meta dd { margin: 0; word-break: break-word; }
 
+/* ---------- Identificação das fotos da galeria (tela cheia) ---------- */
+
+.dialogo-tela-cheia {
+  width: 100vw; max-width: none;
+  height: 100dvh; max-height: none;
+  margin: 0; border-radius: 0;
+}
+.dialogo-tela-cheia::backdrop { background: var(--fundo); }
+
+.identificar {
+  display: flex; flex-direction: column;
+  min-height: 100%;
+  max-width: 640px; margin: 0 auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.identificar-topo {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top));
+}
+.identificar-titulo { display: grid; }
+.identificar-titulo strong { font-size: 17px; }
+.identificar-titulo small { color: var(--texto-suave); font-size: 13px; font-variant-numeric: tabular-nums; }
+.identificar .progresso { border-radius: 0; height: 4px; }
+
+.identificar-foto {
+  display: grid; place-items: center;
+  background: #000;
+  height: 38dvh; min-height: 180px;
+}
+.identificar-foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+.identificar-campos { padding: 16px; display: grid; gap: 0; }
+.identificar-campos .dialogo-acoes { margin-top: 18px; }
+.btn-remover { margin-top: 8px; color: var(--erro); }
+
 /* ---------- Sincronização ---------- */
 
 .resumo-status { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }

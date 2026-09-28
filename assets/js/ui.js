@@ -30,6 +30,7 @@ const ICONES = {
   busca: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   local: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
+  fechar: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
   prancheta: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 13l2 2 4-4"/>',
 };
 
@@ -104,11 +105,11 @@ export function toast(mensagem, { tipo = 'info', duracao = 3500, acao } = {}) {
 /* ---------- Diálogos ---------- */
 
 /** Abre um diálogo modal novo; ele é removido do DOM ao fechar. */
-export function abrirDialogo(html, { aoFechar } = {}) {
+export function abrirDialogo(html, { aoFechar, classe = '', fecharNoFundo = true } = {}) {
   const dlg = document.createElement('dialog');
-  dlg.className = 'dialogo';
+  dlg.className = `dialogo ${classe}`.trim();
   dlg.innerHTML = html;
-  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) dlg.close(); });
+  if (fecharNoFundo) dlg.addEventListener('click', (ev) => { if (ev.target === dlg) dlg.close(); });
   dlg.addEventListener('close', () => {
     aoFechar?.();
     dlg.remove();

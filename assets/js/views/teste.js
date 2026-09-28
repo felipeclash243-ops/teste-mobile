@@ -5,7 +5,7 @@ import { STATUS, salvarRegistro, listarPorTeste, obterRegistro, excluirRegistro 
 import { comprimirImagem } from '../imagem.js';
 import {
   $, esc, icone, toast, chipStatus, formatarDataHora, formatarBytes,
-  abrirDialogo, confirmar, telaVazia,
+  abrirDialogo, confirmar, telaVazia, plural,
 } from '../ui.js';
 
 export async function render(el, { params, sessao, definirCabecalho }) {
@@ -48,7 +48,8 @@ export async function render(el, { params, sessao, definirCabecalho }) {
           <input type="file" accept="image/*" multiple class="oculto" id="in-galeria">
         </label>
       </div>
-      <p class="dica">As fotos ficam salvas neste aparelho até a sincronização.</p>
+      <p class="dica">Na galeria, selecione várias fotos e identifique uma por uma em seguida.<br>
+        As fotos ficam salvas neste aparelho até a sincronização.</p>
 
       <h2 class="secao">Fotos deste teste <span id="contador"></span></h2>
       <div class="grade-fotos" id="grade"></div>
@@ -113,55 +114,235 @@ export async function render(el, { params, sessao, definirCabecalho }) {
     if (inputItem.value.trim()) mostrarErroItem(false);
   });
 
-  async function processarArquivos(arquivos) {
-    if (!arquivos.length) return;
-    if (!itemValido()) return;
-    const itemId = inputItem.value.trim();
-
+  /**
+   * Comprime e grava as fotos no banco local.
+   * itens: [{ arquivo, itemId, observacao }]. Retorna quantas foram salvas.
+   */
+  async function salvarFotos(itens) {
     definirOcupado(true);
     let salvas = 0;
+    let ultimoErro = null;
     try {
-      for (const arquivo of arquivos) {
-        const { blob, largura, altura } = await comprimirImagem(arquivo, {
-          maxLado: CONFIG.FOTO_MAX_LADO,
-          qualidade: CONFIG.FOTO_QUALIDADE,
-        });
-        await salvarRegistro({
-          unidade, teste,
-          usuario: sessao.usuario,
-          itemId,
-          observacao: inputObs.value.trim(),
-          foto: blob, largura, altura,
-        });
-        salvas++;
+      for (const { arquivo, itemId, observacao } of itens) {
+        try {
+          const { blob, largura, altura } = await comprimirImagem(arquivo, {
+            maxLado: CONFIG.FOTO_MAX_LADO,
+            qualidade: CONFIG.FOTO_QUALIDADE,
+          });
+          await salvarRegistro({
+            unidade, teste,
+            usuario: sessao.usuario,
+            itemId, observacao,
+            foto: blob, largura, altura,
+          });
+          salvas++;
+        } catch (e) {
+          console.error(e);
+          ultimoErro = e;
+          if (e?.name === 'QuotaExceededError') break;
+        }
       }
-      // Cada foto exige uma nova identificação: os campos voltam em branco.
-      inputItem.value = '';
-      inputObs.value = '';
-      toast(salvas === 1 ? 'Foto salva no aparelho.' : `${salvas} fotos salvas no aparelho.`, { tipo: 'sucesso' });
-    } catch (e) {
-      console.error(e);
-      const semEspaco = e?.name === 'QuotaExceededError';
-      toast(semEspaco
-        ? 'Sem espaço no aparelho. Sincronize e remova as fotos já enviadas.'
-        : `Não foi possível salvar a foto: ${e.message}`, { tipo: 'erro', duracao: 6000 });
     } finally {
       definirOcupado(false);
       await carregarGrade();
     }
+
+    if (ultimoErro) {
+      const motivo = ultimoErro.name === 'QuotaExceededError'
+        ? 'Sem espaço no aparelho. Sincronize e remova as fotos já enviadas.'
+        : ultimoErro.message;
+      const falhas = itens.length - salvas;
+      toast(`${plural(falhas, 'foto não foi salva', 'fotos não foram salvas')}: ${motivo}`, { tipo: 'erro', duracao: 6000 });
+    } else {
+      toast(salvas === 1 ? 'Foto salva no aparelho.' : `${salvas} fotos salvas no aparelho.`, { tipo: 'sucesso' });
+    }
+    return salvas;
   }
 
-  el.querySelectorAll('input[type=file]').forEach((input) => {
-    // Valida antes de abrir a câmera, para o auditado não perder a foto tirada.
-    input.addEventListener('click', (ev) => {
-      if (!itemValido()) ev.preventDefault();
-    });
-    input.addEventListener('change', async () => {
-      const arquivos = [...input.files];
-      input.value = '';
-      await processarArquivos(arquivos);
-    });
+  /* ---------- Câmera: identificação digitada antes da foto ---------- */
+
+  const inputCamera = $('#in-camera', el);
+
+  // Valida antes de abrir a câmera, para o auditado não perder a foto tirada.
+  inputCamera.addEventListener('click', (ev) => {
+    if (!itemValido()) ev.preventDefault();
   });
+
+  inputCamera.addEventListener('change', async () => {
+    const [arquivo] = inputCamera.files;
+    inputCamera.value = '';
+    if (!arquivo || !itemValido()) return;
+    const salvas = await salvarFotos([{
+      arquivo,
+      itemId: inputItem.value.trim(),
+      observacao: inputObs.value.trim(),
+    }]);
+    if (salvas) {
+      // Cada foto exige uma nova identificação: os campos voltam em branco.
+      inputItem.value = '';
+      inputObs.value = '';
+    }
+  });
+
+  /* ---------- Galeria: seleciona várias e identifica uma por uma ---------- */
+
+  const inputGaleria = $('#in-galeria', el);
+
+  inputGaleria.addEventListener('change', async () => {
+    const arquivos = [...inputGaleria.files];
+    inputGaleria.value = '';
+    if (!arquivos.length) return;
+    const itens = await identificarFotos(arquivos);
+    if (itens?.length) await salvarFotos(itens);
+  });
+
+  /**
+   * Tela cheia que percorre as fotos selecionadas, uma por vez, pedindo
+   * a identificação de cada uma. Resolve com os itens ou null se cancelado.
+   */
+  function identificarFotos(arquivos) {
+    return new Promise((resolve) => {
+      const fotos = arquivos.map((arquivo) => ({ arquivo, itemId: '', observacao: '' }));
+      let atual = 0;
+      let urlAtual = null;
+      let resultado = null;
+
+      const dlg = abrirDialogo(`
+        <form class="identificar" novalidate>
+          <div class="identificar-topo">
+            <button type="button" class="icon-btn" data-acao="cancelar" aria-label="Cancelar seleção">${icone('fechar')}</button>
+            <div class="identificar-titulo">
+              <strong>Identificar fotos</strong>
+              <small id="id-posicao"></small>
+            </div>
+          </div>
+          <div class="progresso"><div class="progresso-barra" id="id-barra"></div></div>
+
+          <div class="identificar-foto"><img id="id-img" alt=""></div>
+
+          <div class="identificar-campos">
+            <label class="campo">
+              <span>${esc(rotuloItem)} ${teste.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
+              <input id="id-item" autocomplete="off" autocapitalize="characters" aria-describedby="id-erro"
+                     ${teste.itemObrigatorio ? 'required aria-required="true"' : ''}>
+              <small class="campo-erro" id="id-erro" hidden>Preencha este campo para continuar.</small>
+            </label>
+            <label class="campo">
+              <span>Observação <em>(opcional)</em></span>
+              <textarea id="id-obs" rows="2"></textarea>
+            </label>
+
+            <div class="dialogo-acoes">
+              <button type="button" class="btn btn-secundario" data-acao="anterior">Anterior</button>
+              <button type="submit" class="btn btn-primario" id="id-avancar">Próxima</button>
+            </div>
+            <button type="button" class="btn btn-texto btn-remover" data-acao="remover">${icone('lixeira')} Remover esta foto da seleção</button>
+          </div>
+        </form>`, {
+        classe: 'dialogo-tela-cheia',
+        fecharNoFundo: false,
+        aoFechar: () => {
+          if (urlAtual) URL.revokeObjectURL(urlAtual);
+          resolve(resultado);
+        },
+      });
+
+      const form = $('form', dlg);
+      const campoItem = $('#id-item', dlg);
+      const campoObs = $('#id-obs', dlg);
+      const erro = $('#id-erro', dlg);
+      const img = $('#id-img', dlg);
+      const btnAnterior = $('[data-acao=anterior]', dlg);
+      const btnAvancar = $('#id-avancar', dlg);
+
+      function guardarAtual() {
+        fotos[atual].itemId = campoItem.value.trim();
+        fotos[atual].observacao = campoObs.value.trim();
+      }
+
+      function mostrarErro(mostrar) {
+        erro.hidden = !mostrar;
+        campoItem.toggleAttribute('aria-invalid', mostrar);
+      }
+
+      function exibir() {
+        const f = fotos[atual];
+        const ultima = atual === fotos.length - 1;
+        if (urlAtual) URL.revokeObjectURL(urlAtual);
+        urlAtual = URL.createObjectURL(f.arquivo);
+        img.src = urlAtual;
+        img.alt = `Foto ${atual + 1} de ${fotos.length}`;
+        $('#id-posicao', dlg).textContent = `Foto ${atual + 1} de ${fotos.length}`;
+        $('#id-barra', dlg).style.width = `${((atual + 1) / fotos.length) * 100}%`;
+        campoItem.value = f.itemId;
+        campoObs.value = f.observacao;
+        campoItem.enterKeyHint = ultima ? 'done' : 'next';
+        mostrarErro(false);
+        btnAnterior.disabled = atual === 0;
+        btnAvancar.textContent = ultima
+          ? `Salvar ${plural(fotos.length, 'foto', 'fotos')}`
+          : 'Próxima';
+        campoItem.focus();
+      }
+
+      async function cancelar() {
+        const ok = await confirmar({
+          titulo: 'Descartar a seleção?',
+          mensagem: `${plural(fotos.length, 'foto selecionada não será salva', 'fotos selecionadas não serão salvas')}.`,
+          rotuloConfirmar: 'Descartar',
+          perigo: true,
+        });
+        if (ok) dlg.close();
+      }
+
+      campoItem.addEventListener('input', () => {
+        if (campoItem.value.trim()) mostrarErro(false);
+      });
+
+      form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        guardarAtual();
+        if (teste.itemObrigatorio && !fotos[atual].itemId) {
+          mostrarErro(true);
+          campoItem.focus();
+          return;
+        }
+        if (atual < fotos.length - 1) {
+          atual++;
+          exibir();
+          return;
+        }
+        resultado = fotos;
+        dlg.close();
+      });
+
+      btnAnterior.addEventListener('click', () => {
+        guardarAtual();
+        atual--;
+        exibir();
+      });
+
+      $('[data-acao=remover]', dlg).addEventListener('click', () => {
+        fotos.splice(atual, 1);
+        if (!fotos.length) {
+          dlg.close();
+          return;
+        }
+        atual = Math.min(atual, fotos.length - 1);
+        exibir();
+      });
+
+      $('[data-acao=cancelar]', dlg).addEventListener('click', cancelar);
+
+      // Botão "voltar" do Android / tecla Esc: pede confirmação em vez de fechar.
+      dlg.addEventListener('cancel', (ev) => {
+        ev.preventDefault();
+        cancelar();
+      });
+
+      exibir();
+    });
+  }
 
   function abrirDetalhe(r) {
     const url = URL.createObjectURL(r.foto);
