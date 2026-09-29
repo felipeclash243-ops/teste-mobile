@@ -1,13 +1,73 @@
-/** Painel de sincronização: resumo por status, envio, erros e armazenamento. */
-import { MODO_DEMO } from '../config.js';
-import { STATUS, contarPorStatus, listarPorStatus, excluirSincronizados } from '../db.js';
+/**
+ * Painel de sincronização: resumo por status, envio, erros e armazenamento.
+ * Com CONFIG.ENVIAR_FOTOS desligado (fase somente leitura), vira "Fotos no aparelho".
+ */
+import { CONFIG, MODO_DEMO } from '../config.js';
+import {
+  STATUS, contarPorStatus, listarPorStatus, excluirSincronizados, resumoPorUnidadeTeste, listarPorTeste,
+} from '../db.js';
 import { sairComConfirmacao, tratarErroDeSessao } from '../auth.js';
 import { sincronizar, sincronizacaoEmAndamento } from '../sync.js';
 import {
   $, esc, icone, toast, confirmar, formatarDataHora, formatarBytes, plural, ROTULO_STATUS,
 } from '../ui.js';
 
-export async function render(el, { sessao, definirCabecalho }) {
+async function descreverArmazenamento() {
+  if (!navigator.storage?.estimate) return 'Informação de espaço indisponível neste navegador.';
+  const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+  const protegido = await navigator.storage.persisted?.();
+  return `${formatarBytes(usage)} usados de ${formatarBytes(quota)} disponíveis`
+    + (protegido ? ' · armazenamento protegido' : ' · armazenamento não protegido');
+}
+
+/** Fase somente leitura: nada é enviado; mostra o que está guardado no aparelho. */
+async function renderSomenteLeitura(el, { sessao, definirCabecalho }) {
+  definirCabecalho({ titulo: 'Fotos no aparelho', subtitulo: 'Envio ao SIAC desativado', voltar: '#/unidades' });
+
+  el.innerHTML = `
+    <section class="sync">
+      <div class="card sync-acao">
+        <p><strong>O envio de fotos ao SIAC está desativado nesta fase.</strong></p>
+        <p class="texto-suave">O app só consulta filiais e testes no SIAC. As fotos ficam salvas somente
+          neste aparelho e não são apagadas ao sair.</p>
+      </div>
+
+      <div class="card">
+        <h2 class="secao" id="total-fotos"></h2>
+        <ul class="lista-erros" id="por-teste"></ul>
+      </div>
+
+      <div class="card">
+        <h2 class="secao">Armazenamento no aparelho</h2>
+        <p id="armazenamento" class="texto-suave">Calculando…</p>
+      </div>
+
+      <button type="button" class="btn btn-texto" id="btn-sair">${icone('sair')} Sair (${esc(sessao.usuario.nome)})</button>
+    </section>`;
+
+  const resumo = await resumoPorUnidadeTeste();
+  const grupos = await Promise.all(Object.keys(resumo).map(async (chave) => {
+    const [unidadeId, ref] = chave.split('|');
+    const [r] = await listarPorTeste(unidadeId, ref);
+    return { ...resumo[chave], unidade: r?.unidadeNome || unidadeId, teste: r?.testeNome || ref };
+  }));
+  const total = grupos.reduce((s, g) => s + g.total, 0);
+
+  $('#total-fotos', el).textContent = total ? plural(total, 'foto guardada', 'fotos guardadas') : 'Nenhuma foto guardada';
+  $('#por-teste', el).innerHTML = grupos
+    .sort((a, b) => `${a.unidade}${a.teste}`.localeCompare(`${b.unidade}${b.teste}`, 'pt-BR'))
+    .map((g) => `
+      <li>
+        <strong>${esc(g.unidade)} · ${esc(g.teste)}</strong>
+        <small>${plural(g.total, 'foto', 'fotos')}</small>
+      </li>`).join('');
+  $('#armazenamento', el).textContent = await descreverArmazenamento();
+  $('#btn-sair', el).addEventListener('click', sairComConfirmacao);
+}
+
+export async function render(el, ctx) {
+  if (!CONFIG.ENVIAR_FOTOS) return renderSomenteLeitura(el, ctx);
+  const { sessao, definirCabecalho } = ctx;
   definirCabecalho({
     titulo: 'Sincronização',
     subtitulo: MODO_DEMO ? 'Modo demonstração' : 'Envio ao SIAC',
@@ -96,15 +156,7 @@ export async function render(el, { sessao, definirCabecalho }) {
   }
 
   async function atualizarArmazenamento() {
-    const info = $('#armazenamento', el);
-    if (!navigator.storage?.estimate) {
-      info.textContent = 'Informação de espaço indisponível neste navegador.';
-      return;
-    }
-    const { usage = 0, quota = 0 } = await navigator.storage.estimate();
-    const protegido = await navigator.storage.persisted?.();
-    info.textContent = `${formatarBytes(usage)} usados de ${formatarBytes(quota)} disponíveis`
-      + (protegido ? ' · armazenamento protegido' : ' · armazenamento não protegido');
+    $('#armazenamento', el).textContent = await descreverArmazenamento();
   }
 
   btnSync.addEventListener('click', async () => {

@@ -5,6 +5,7 @@
  * Enquanto o refresh_token for válido, o app abre mesmo sem internet;
  * o access_token é obtido sob demanda quando houver conexão.
  */
+import { CONFIG } from './config.js';
 import { getMeta, setMeta, contarPorStatus } from './db.js';
 import { requisicao, guardarTokens, apagarSessaoLocal, obterDeviceId, nomeDoAparelho } from './api.js';
 import { confirmar, plural, toast } from './ui.js';
@@ -47,7 +48,8 @@ export async function sair() {
 
 export async function sairComConfirmacao() {
   const c = await contarPorStatus();
-  const naoEnviadas = c.pendente + c.erro;
+  // Na fase somente leitura nada é enviado, então não há o que perder ao sair.
+  const naoEnviadas = CONFIG.ENVIAR_FOTOS ? c.pendente + c.erro : 0;
   if (naoEnviadas > 0) {
     const ok = await confirmar({
       titulo: 'Sair da aplicação?',

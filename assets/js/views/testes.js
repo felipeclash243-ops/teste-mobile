@@ -1,5 +1,6 @@
 /** Testes da filial (contrato, seção 5.1: GET /filiais/{id}/testes). */
 import { filiaisSalvas, testesSalvos, atualizarTestes } from '../catalogo.js';
+import { CONFIG } from '../config.js';
 import { resumoPorUnidadeTeste } from '../db.js';
 import { tratarErroDeSessao } from '../auth.js';
 import { regrasDoModulo } from '../data/modulos.js';
@@ -27,7 +28,7 @@ export async function render(el, { params, definirCabecalho }) {
     const detalhes = [
       t.aceita_fotos && t.prazo_filial ? `Prazo ${formatarData(t.prazo_filial)}` : null,
       t.fotos_enviadas ? `${plural(t.fotos_enviadas, 'foto no SIAC', 'fotos no SIAC')}` : null,
-      r.pendentes ? `<span class="texto-pendente">${r.pendentes} a sincronizar</span>` : null,
+      r.pendentes ? `<span class="texto-pendente">${r.pendentes} ${CONFIG.ENVIAR_FOTOS ? 'a sincronizar' : 'no aparelho'}</span>` : null,
       r.rejeitadas ? `<span class="texto-erro">${plural(r.rejeitadas, 'rejeitada', 'rejeitadas')}</span>` : null,
     ].filter(Boolean).join(' · ');
     return `

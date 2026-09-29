@@ -1,6 +1,7 @@
 /**
  * Utilitários de interface: ícones, toasts, diálogos e formatação.
  */
+import { CONFIG } from './config.js';
 
 export const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
 
@@ -41,7 +42,8 @@ export function icone(nome, classe = '') {
 /* ---------- Status de sincronização ---------- */
 
 export const ROTULO_STATUS = {
-  pendente: 'Pendente',
+  // Com o envio desligado (fase somente leitura) a foto não está "pendente": ela fica no aparelho.
+  pendente: CONFIG.ENVIAR_FOTOS ? 'Pendente' : 'No aparelho',
   sincronizando: 'Sincronizando',
   sincronizado: 'Sincronizado',
   erro: 'Erro',

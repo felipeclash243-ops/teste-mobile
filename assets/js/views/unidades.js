@@ -71,7 +71,7 @@ export async function render(el, { sessao, definirCabecalho }) {
                 ? `<span class="texto-destaque">${plural(f.testes_disponiveis, 'teste aguardando', 'testes aguardando')}</span>`
                 : 'Nenhum teste aguardando'}</small>
             </span>
-            ${pend ? `<span class="pill pill-pendente" title="Fotos não sincronizadas">${pend}</span>` : ''}
+            ${pend ? `<span class="pill pill-pendente" title="Fotos neste aparelho">${pend}</span>` : ''}
             ${icone('seta', 'item-seta')}
           </a>
         </li>`;

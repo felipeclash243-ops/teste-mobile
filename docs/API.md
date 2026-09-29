@@ -6,6 +6,25 @@ servidor simulado ([assets/js/api-mock.js](../assets/js/api-mock.js)) que respon
 
 Para ligar no SIAC real: preencher `API_BASE_URL` em [assets/js/config.js](../assets/js/config.js).
 
+## Fase atual: somente leitura
+
+Por enquanto o app **não grava nada no SIAC**: `ENVIAR_FOTOS: false` em `config.js`.
+As fotos ficam só no aparelho, e o cliente da API bloqueia qualquer chamada de gravação antes de sair do celular.
+
+Para o app mostrar os dados reais, o SIAC só precisa implementar agora:
+
+| Rota | Para quê |
+|---|---|
+| `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` | Identificar o usuário (necessário para filtrar as filiais dele) |
+| `GET /filiais` | Filiais do usuário |
+| `GET /filiais/{branch_id}/testes` | Testes de cada filial |
+| `GET /testes/{modulo}/{id}` | Orientação do auditor |
+
+Mais CORS (item 1 abaixo). A tabela `mobile_uploads` e as rotas de foto ficam para a fase de envio.
+O login ainda grava o controle de tokens (`mobile_tokens`) e o registro de acesso (`access_logs`) previstos no contrato.
+
+Para ligar o envio depois: `ENVIAR_FOTOS: true` e o SIAC com as rotas de foto prontas.
+
 ## O que o app usa do contrato
 
 | Rota | Onde no app |

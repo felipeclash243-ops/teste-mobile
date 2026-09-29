@@ -8,7 +8,7 @@
  *   #/u/:filial/t/:ref         registro de fotos do teste (ref = modulo:id)
  *   #/sync                     sincronização
  */
-import { CONFIG } from './config.js';
+import { CONFIG, MODO_DEMO } from './config.js';
 import { abrirDB, recuperarInterrompidos, contarPorStatus } from './db.js';
 import { obterSessao } from './auth.js';
 import { $, esc, toast } from './ui.js';
@@ -33,6 +33,8 @@ let navegacao = 0;
 
 function definirCabecalho(opcoes) {
   const topo = $('#topbar');
+  // Faixa fixa para ninguém confundir os dados simulados com os do SIAC.
+  $('#demo-bar').hidden = !opcoes || !MODO_DEMO;
   if (!opcoes) {
     topo.hidden = true;
     document.title = CONFIG.APP_NOME;
@@ -90,7 +92,8 @@ async function navegar() {
 async function atualizarBadge() {
   try {
     const c = await contarPorStatus();
-    const n = c.pendente + c.erro;
+    // Fase somente leitura: nada será enviado, então não há contador de pendências.
+    const n = CONFIG.ENVIAR_FOTOS ? c.pendente + c.erro : 0;
     const badge = $('#badge-pendentes');
     badge.hidden = n === 0;
     badge.textContent = n > 99 ? '99+' : String(n);

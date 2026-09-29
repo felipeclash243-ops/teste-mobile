@@ -115,6 +115,12 @@ export async function requisicao(caminho, opcoes = {}) {
   const { metodo = 'GET', json, form, autenticar = true, timeout = CONFIG.API_TIMEOUT_MS, repetida = false } = opcoes;
   if (!navigator.onLine) throw new ErroApi(0, 'sem_rede', 'Sem conexão com a internet.');
 
+  // Modo somente leitura: bloqueia no próprio aparelho qualquer gravação no SIAC.
+  // Só o login (/auth/*) passa, porque o SIAC precisa identificar o usuário.
+  if (!CONFIG.ENVIAR_FOTOS && metodo !== 'GET' && !caminho.startsWith('/auth/')) {
+    throw new ErroApi(0, 'envio_desativado', 'O envio ao SIAC está desativado nesta fase. As fotos ficam salvas neste aparelho.');
+  }
+
   const headers = {
     Accept: 'application/json',
     'X-App-Version': CONFIG.VERSAO,

@@ -14,6 +14,12 @@ export const CONFIG = {
   // Ex.: 'https://<dominio-da-plataforma>/api/mobile/v1'
   API_BASE_URL: '',
 
+  // Fase atual: o app SÓ LÊ dados do SIAC (filiais, testes, orientação).
+  // false = nenhuma foto é enviada e nenhuma rota de gravação é chamada;
+  //         as fotos ficam somente neste aparelho.
+  // true  = envia as fotos ao SIAC (POST /testes/{modulo}/{id}/fotos e /fotos/concluir).
+  ENVIAR_FOTOS: false,
+
   // Senha aceita no modo demonstração (qualquer e-mail).
   DEMO_SENHA: '1234',
 

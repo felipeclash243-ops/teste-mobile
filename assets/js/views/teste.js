@@ -65,7 +65,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
         </label>
       </div>
       <p class="dica">Na galeria, selecione várias fotos e identifique uma por uma em seguida.<br>
-        As fotos ficam salvas neste aparelho até a sincronização.</p>
+        ${CONFIG.ENVIAR_FOTOS ? 'As fotos ficam salvas neste aparelho até a sincronização.' : 'As fotos ficam salvas somente neste aparelho.'}</p>
       </div>
 
       <h2 class="secao">Fotos deste teste <span id="contador"></span></h2>
@@ -173,9 +173,10 @@ export async function render(el, { params, sessao, definirCabecalho }) {
       const falhas = itens.length - salvas;
       toast(`${plural(falhas, 'foto não foi salva', 'fotos não foram salvas')}: ${motivo}`, { tipo: 'erro', duracao: 6000 });
     } else {
+      const destino = CONFIG.ENVIAR_FOTOS ? (salvas === 1 ? ', pronta para sincronizar' : ', prontas para sincronizar') : '';
       toast(salvas === 1
-        ? 'Foto salva no aparelho, pronta para sincronizar.'
-        : `${salvas} fotos salvas no aparelho, prontas para sincronizar.`, { tipo: 'sucesso' });
+        ? `Foto salva no aparelho${destino}.`
+        : `${salvas} fotos salvas no aparelho${destino}.`, { tipo: 'sucesso' });
     }
     return salvas;
   }

@@ -106,6 +106,9 @@ async function concluirTestes() {
  */
 export async function sincronizar() {
   if (emAndamento) return null;
+  if (!CONFIG.ENVIAR_FOTOS) {
+    throw new ErroApi(0, 'envio_desativado', 'O envio ao SIAC está desativado nesta fase. As fotos ficam salvas neste aparelho.');
+  }
   if (!navigator.onLine) throw new ErroApi(0, 'sem_rede', 'Sem conexão com a internet.');
 
   emAndamento = true;

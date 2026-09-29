@@ -87,6 +87,12 @@ code { font-size: .9em; background: var(--primaria-suave); padding: 1px 5px; bor
 
 /* ---------- Estrutura ---------- */
 
+.demo-bar {
+  padding: 6px 16px;
+  background: var(--pendente); color: var(--superficie);
+  font-size: 13px; font-weight: 700; text-align: center;
+}
+
 .offline-bar {
   padding: 8px 16px;
   background: var(--pendente-fundo); color: var(--pendente);
