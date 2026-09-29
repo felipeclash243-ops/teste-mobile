@@ -448,9 +448,18 @@ input:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset
 .card-teste { display: grid; gap: 10px; margin-bottom: 16px; }
 .teste-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; }
 .orientacao {
-  padding: 10px 12px; border-radius: var(--raio-pequeno);
+  border-radius: var(--raio-pequeno);
   background: var(--primaria-suave); font-size: 15px;
 }
+.orientacao summary {
+  min-height: 44px; padding: 10px 12px;
+  display: flex; align-items: center;
+  color: var(--primaria); font-weight: 600; cursor: pointer;
+}
+.orientacao[open] summary { padding-bottom: 4px; }
+#orientacao-texto { padding: 0 12px 12px; }
+#orientacao-texto h3 { margin: 10px 0 2px; font-size: 14px; }
+#orientacao-texto p { margin: 0; white-space: pre-line; }
 .captura > .aviso { margin: 0 0 16px; }
 
 /* ---------- Toasts ---------- */

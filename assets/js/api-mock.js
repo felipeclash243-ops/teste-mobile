@@ -23,9 +23,14 @@ const FILIAIS = [
 
 const MODELOS = [
   { modulo: 'avarias', nome: 'Avarias', status: 'pending_unit', prazo: 7, iniciado: 2,
-    orientacao: 'Fotografe cada produto avariado com a etiqueta visível e informe o código do produto ou a NF.' },
+    orientacao: {
+      o_que_e_realizado: 'Conferência dos produtos avariados registrados no período.',
+      como_realizar: 'Fotografe cada produto avariado com a etiqueta visível.\nInforme o código do produto ou a NF em cada foto.',
+      informacoes_importantes: null,
+      resultado_esperado: 'Uma foto legível por produto avariado.',
+    } },
   { modulo: 'gt', nome: 'Inventário Rotativo', status: 'pending_unit', prazo: 5, iniciado: 4,
-    orientacao: 'Fotografe as etiquetas das posições listadas no e-mail.' },
+    orientacao: { como_realizar: 'Fotografe as etiquetas das posições listadas no e-mail.' } },
   { modulo: 'sf', nome: 'Sobras e Faltas', status: 'pending_unit', prazo: null, iniciado: 6, orientacao: null },
   { modulo: 'cl', nome: 'Check List Instalação', status: 'sent', prazo: null, iniciado: 12, orientacao: null },
   { modulo: 'gar', nome: 'Garantia', status: 'evaluated', prazo: null, iniciado: 30, orientacao: null },
@@ -183,7 +188,15 @@ export async function responder(metodo, caminho, { headers, body }) {
     if (metodo === 'GET' && m) {
       const t = acharTeste(m[1], m[2], e);
       if (!t) return erro(404, 'teste_nao_encontrado', 'Teste não encontrado.');
-      return responder_(200, { ...t, fotos: Object.values(e.uploads).filter((u) => u.ref === t.ref) });
+      // Mesmo formato do SIAC: texto com um bloco por parte + as partes separadas.
+      const titulos = { o_que_e_realizado: 'O que é realizado', como_realizar: 'Como realizar',
+        informacoes_importantes: 'Informações importantes', resultado_esperado: 'Resultado esperado' };
+      const partes = t.orientacao || null;
+      const texto = partes ? Object.entries(titulos).filter(([k]) => partes[k]).map(([k, tt]) => `${tt}:\n${partes[k]}`).join('\n\n') : null;
+      return responder_(200, {
+        ...t, orientacao: texto, orientacao_partes: partes,
+        fotos: Object.values(e.uploads).filter((u) => u.ref === t.ref).map((u) => u.foto),
+      });
     }
 
     /* --- Fotos --- */

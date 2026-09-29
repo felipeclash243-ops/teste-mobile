@@ -67,8 +67,11 @@ export async function sairComConfirmacao() {
  * Retorna true se o erro foi tratado (o chamador deve parar).
  */
 export async function tratarErroDeSessao(erro) {
-  if (erro?.codigo === 'sessao_expirada') {
-    toast('Sua sessão expirou. Entre novamente; as fotos continuam salvas no aparelho.', { tipo: 'erro', duracao: 6000 });
+  if (erro?.codigo === 'sessao_expirada' || erro?.codigo === 'conta_bloqueada') {
+    const msg = erro.codigo === 'conta_bloqueada'
+      ? erro.message
+      : 'Sua sessão expirou. Entre novamente; as fotos continuam salvas no aparelho.';
+    toast(msg, { tipo: 'erro', duracao: 6000 });
     await apagarSessaoLocal();
     location.hash = '#/login';
     return true;

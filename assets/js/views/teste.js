@@ -9,6 +9,26 @@ import {
   abrirDialogo, confirmar, telaVazia, plural,
 } from '../ui.js';
 
+const PARTES_ORIENTACAO = [
+  ['o_que_e_realizado', 'O que é realizado'],
+  ['como_realizar', 'Como realizar'],
+  ['informacoes_importantes', 'Informações importantes'],
+  ['resultado_esperado', 'Resultado esperado'],
+];
+
+/**
+ * Orientação do teste (Config > Orientações dos Testes no SIAC).
+ * Usa `orientacao_partes` quando vier, com um título por bloco; senão, o texto corrido.
+ */
+function htmlOrientacao(detalhe) {
+  const partes = detalhe?.orientacao_partes;
+  if (partes && PARTES_ORIENTACAO.some(([k]) => partes[k])) {
+    return PARTES_ORIENTACAO.filter(([k]) => partes[k])
+      .map(([k, titulo]) => `<h3>${esc(titulo)}</h3><p>${esc(partes[k])}</p>`).join('');
+  }
+  return detalhe?.orientacao ? `<p>${esc(detalhe.orientacao)}</p>` : '';
+}
+
 export async function render(el, { params, sessao, definirCabecalho }) {
   const dados = await testesSalvos(params.unidadeId);
   const teste = todosOsTestes(dados).find((t) => t.ref === params.testeId);
@@ -32,7 +52,10 @@ export async function render(el, { params, sessao, definirCabecalho }) {
           <span class="chip chip-teste${teste.aceita_fotos ? ' chip-teste-aberto' : ''}">${esc(teste.status_rotulo)}</span>
           ${teste.prazo_filial ? `<span class="texto-suave">Prazo da filial: ${formatarData(teste.prazo_filial)}</span>` : ''}
         </div>
-        <p id="orientacao" class="orientacao"${detalhe?.orientacao ? '' : ' hidden'}>${esc(detalhe?.orientacao || '')}</p>
+        <details id="orientacao" class="orientacao"${htmlOrientacao(detalhe) ? '' : ' hidden'}>
+          <summary>Ver orientação do teste</summary>
+          <div id="orientacao-texto">${htmlOrientacao(detalhe)}</div>
+        </details>
       </div>
 
       ${teste.aceita_fotos ? '' : `
@@ -417,9 +440,9 @@ export async function render(el, { params, sessao, definirCabecalho }) {
   if (navigator.onLine) {
     atualizarDetalhe(teste.modulo, teste.id)
       .then((d) => {
-        const p = $('#orientacao', el);
-        p.textContent = d.orientacao || '';
-        p.hidden = !d.orientacao;
+        const html = htmlOrientacao(d);
+        $('#orientacao-texto', el).innerHTML = html;
+        $('#orientacao', el).hidden = !html;
       })
       .catch(() => { /* sem orientação nova; segue com a guardada */ });
   }
