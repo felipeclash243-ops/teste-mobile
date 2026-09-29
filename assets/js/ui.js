@@ -45,6 +45,7 @@ export const ROTULO_STATUS = {
   sincronizando: 'Sincronizando',
   sincronizado: 'Sincronizado',
   erro: 'Erro',
+  rejeitada: 'Rejeitada',
 };
 
 export function chipStatus(status, compacto = false) {
@@ -58,6 +59,21 @@ const fmtDataHora = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeS
 
 export function formatarDataHora(iso) {
   return iso ? fmtDataHora.format(new Date(iso)) : '—';
+}
+
+const fmtHora = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const fmtData = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+
+/** "Atualizado às 14:32" (hoje) ou "Atualizado em 28/09 às 14:32". */
+export function textoAtualizado(iso) {
+  if (!iso) return 'Ainda não atualizado';
+  const d = new Date(iso);
+  const hoje = new Date().toDateString() === d.toDateString();
+  return hoje ? `Atualizado às ${fmtHora.format(d)}` : `Atualizado em ${fmtData.format(d)} às ${fmtHora.format(d)}`;
+}
+
+export function formatarData(iso) {
+  return iso ? fmtData.format(new Date(iso)) : '—';
 }
 
 export function formatarBytes(bytes) {

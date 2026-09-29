@@ -8,11 +8,20 @@
 const DB_NOME = 'auditoria-mobile';
 const DB_VERSAO = 1;
 
+/**
+ * Estados de cada foto (contrato, seção 7):
+ *  pendente      = capturada, aguardando envio
+ *  sincronizando = enviando agora
+ *  sincronizado  = servidor confirmou (200/201)
+ *  erro          = falha temporária (rede, 5xx, hash divergente); tenta de novo
+ *  rejeitada     = erro definitivo (teste fechou, não encontrado...); não reenvia
+ */
 export const STATUS = Object.freeze({
   PENDENTE: 'pendente',
   SINCRONIZANDO: 'sincronizando',
   SINCRONIZADO: 'sincronizado',
   ERRO: 'erro',
+  REJEITADA: 'rejeitada',
 });
 
 let dbPromise = null;
@@ -71,15 +80,23 @@ export function novoId() {
 
 /* ---------- Registros ---------- */
 
-export async function salvarRegistro({ unidade, teste, usuario, itemId, observacao, foto, largura, altura }) {
+/**
+ * Grava uma foto capturada.
+ * unidade: { id, nome } (filial) · teste: { ref, modulo, id, nome } · usuario: { id, nome, email }
+ * O `id` (UUID) é o client_uuid do contrato e o `sha256` é calculado na captura.
+ */
+export async function salvarRegistro({ unidade, teste, usuario, itemId, observacao, foto, sha256, largura, altura }) {
   const agora = new Date().toISOString();
   const registro = {
     id: novoId(),
-    unidadeId: unidade.id,
+    unidadeId: String(unidade.id),
     unidadeNome: unidade.nome,
-    testeId: teste.id,
+    testeId: teste.ref,
+    modulo: teste.modulo,
+    testeNumId: teste.id,
     testeNome: teste.nome,
-    usuario,
+    usuario: usuario.email,
+    usuarioNome: usuario.nome,
     itemId: itemId || '',
     observacao: observacao || '',
     criadoEm: agora,
@@ -87,8 +104,13 @@ export async function salvarRegistro({ unidade, teste, usuario, itemId, observac
     status: STATUS.PENDENTE,
     tentativas: 0,
     ultimoErro: null,
+    erroCodigo: null,
+    verificarAntes: false,
     sincronizadoEm: null,
+    anexoId: null,
+    notificadoEm: null,
     foto,
+    sha256,
     fotoTipo: foto.type,
     fotoTamanho: foto.size,
     largura,
@@ -156,7 +178,10 @@ export async function contarPorStatus() {
   });
 }
 
-/** Resumo por unidade/teste: { 'unidade|teste': { total, pendentes } }. */
+/**
+ * Resumo por unidade/teste: { 'unidade|teste': { total, pendentes, rejeitadas } }.
+ * pendentes = ainda não confirmadas pelo servidor (pendente, sincronizando ou erro).
+ */
 export async function resumoPorUnidadeTeste() {
   const resumo = {};
   await executar('registros', 'readonly', (s) => {
@@ -166,9 +191,10 @@ export async function resumoPorUnidadeTeste() {
       if (!cursor) return;
       const r = cursor.value;
       const chave = `${r.unidadeId}|${r.testeId}`;
-      resumo[chave] ??= { total: 0, pendentes: 0 };
+      resumo[chave] ??= { total: 0, pendentes: 0, rejeitadas: 0 };
       resumo[chave].total++;
-      if (r.status !== STATUS.SINCRONIZADO) resumo[chave].pendentes++;
+      if (r.status === STATUS.REJEITADA) resumo[chave].rejeitadas++;
+      else if (r.status !== STATUS.SINCRONIZADO) resumo[chave].pendentes++;
       cursor.continue();
     };
   });

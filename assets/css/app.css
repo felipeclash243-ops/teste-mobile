@@ -21,6 +21,8 @@
   --sincronizado-fundo: #dcf5e4;
   --erro: #b42318;
   --erro-fundo: #fde4e1;
+  --rejeitada: #4b5563;
+  --rejeitada-fundo: #e5e7eb;
 
   --raio: 14px;
   --raio-pequeno: 10px;
@@ -49,6 +51,8 @@
     --sincronizado-fundo: #12311f;
     --erro: #ff8a7d;
     --erro-fundo: #3d1714;
+    --rejeitada: #c3cad4;
+    --rejeitada-fundo: #2a313b;
 
     --sombra: 0 1px 2px rgb(0 0 0 / 40%);
     color-scheme: dark;
@@ -265,6 +269,9 @@ input:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset
 .chip-sincronizando { background: var(--sincronizando-fundo); color: var(--sincronizando); }
 .chip-sincronizado { background: var(--sincronizado-fundo); color: var(--sincronizado); }
 .chip-erro { background: var(--erro-fundo); color: var(--erro); }
+.chip-rejeitada { background: var(--rejeitada-fundo); color: var(--rejeitada); }
+.chip-teste { background: var(--rejeitada-fundo); color: var(--rejeitada); font-weight: 600; }
+.chip-teste-aberto { background: var(--sincronizado-fundo); color: var(--sincronizado); }
 
 /* ---------- Login ---------- */
 
@@ -335,38 +342,54 @@ input:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset
 
 /* ---------- Identificação das fotos da galeria (tela cheia) ---------- */
 
+/* Coluna de altura fixa: topo, foto (ocupa o espaço que sobrar) e campos.
+   A foto nunca fica atrás dos campos; com o teclado aberto ela diminui. */
 .dialogo-tela-cheia {
   width: 100vw; max-width: none;
   height: 100dvh; max-height: none;
   margin: 0; border-radius: 0;
+  overflow-y: auto;
 }
 .dialogo-tela-cheia::backdrop { background: var(--fundo); }
 
 .identificar {
   display: flex; flex-direction: column;
-  min-height: 100%;
+  height: 100%;
   max-width: 640px; margin: 0 auto;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .identificar-topo {
+  flex: none;
   display: flex; align-items: center; gap: 4px;
   padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top));
 }
-.identificar-titulo { display: grid; }
+.identificar-titulo { display: grid; flex: 1; min-width: 0; }
 .identificar-titulo strong { font-size: 17px; }
 .identificar-titulo small { color: var(--texto-suave); font-size: 13px; font-variant-numeric: tabular-nums; }
-.identificar .progresso { border-radius: 0; height: 4px; }
+.btn-remover {
+  flex: none; min-height: 44px; padding: 0 12px;
+  border: 0; background: transparent; color: var(--erro);
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.identificar .progresso { flex: none; border-radius: 0; height: 4px; }
 
 .identificar-foto {
-  display: grid; place-items: center;
+  position: relative;
+  flex: 1 1 0; min-height: 140px;
   background: #000;
-  height: 38dvh; min-height: 180px;
+  overflow: hidden;
 }
-.identificar-foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* A foto inteira sempre visível, reduzida para caber na área (sem recorte nem zoom). */
+.identificar-foto img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
 
-.identificar-campos { padding: 16px; display: grid; gap: 0; }
-.identificar-campos .dialogo-acoes { margin-top: 18px; }
-.btn-remover { margin-top: 8px; color: var(--erro); }
+.identificar-campos { flex: none; padding: 12px 16px 16px; background: var(--superficie); }
+.identificar-campos .campo + .campo { margin-top: 10px; }
+.identificar-campos textarea { min-height: 48px; }
+.identificar-campos .dialogo-acoes { margin-top: 14px; }
 
 /* ---------- Sincronização ---------- */
 
@@ -382,17 +405,47 @@ input:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset
 .status-sincronizando { background: var(--sincronizando-fundo); color: var(--sincronizando); }
 .status-sincronizado { background: var(--sincronizado-fundo); color: var(--sincronizado); }
 .status-erro { background: var(--erro-fundo); color: var(--erro); }
+.status-rejeitada { background: var(--rejeitada-fundo); color: var(--rejeitada); grid-column: 1 / -1; }
 
 .sync-acao { display: grid; gap: 12px; }
 .progresso { height: 8px; border-radius: 4px; background: var(--primaria-suave); overflow: hidden; }
 .progresso-barra { height: 100%; width: 0; background: var(--primaria); transition: width .3s; }
 
 .card-erro { border-color: var(--erro); }
+.card-rejeitada { border-color: var(--rejeitada); }
+.card-erro + .card-rejeitada { margin-top: 16px; }
 .lista-erros { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
 .lista-erros li { display: grid; padding-top: 10px; border-top: 1px solid var(--borda); }
 .lista-erros small { font-size: 13px; }
 
 .card .btn-secundario { margin-top: 12px; width: 100%; }
+
+/* ---------- Listas vindas do servidor ---------- */
+
+.atualizacao {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 10px; font-size: 13px;
+}
+.btn-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 40px; padding: 0 4px;
+  border: 0; background: transparent; color: var(--primaria);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.btn-link .ico { width: 18px; height: 18px; }
+.btn-link:disabled { opacity: .5; }
+.texto-destaque { color: var(--sincronizado); font-weight: 600; }
+.item-inativo { opacity: .72; box-shadow: none; }
+.item-texto .chip { margin: 3px 0 1px; }
+.dica-secao { margin: -4px 0 10px; font-size: 13px; }
+
+.card-teste { display: grid; gap: 10px; margin-bottom: 16px; }
+.teste-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; }
+.orientacao {
+  padding: 10px 12px; border-radius: var(--raio-pequeno);
+  background: var(--primaria-suave); font-size: 15px;
+}
+.captura > .aviso { margin: 0 0 16px; }
 
 /* ---------- Toasts ---------- */
 

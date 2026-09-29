@@ -3,15 +3,14 @@
  *
  * Rotas:
  *   #/login                    tela de bloqueio
- *   #/unidades                 seleção da unidade
- *   #/u/:unidade               testes da unidade
- *   #/u/:unidade/t/:teste      registro de fotos do teste
+ *   #/unidades                 seleção da filial
+ *   #/u/:filial                testes da filial
+ *   #/u/:filial/t/:ref         registro de fotos do teste (ref = modulo:id)
  *   #/sync                     sincronização
  */
 import { CONFIG } from './config.js';
 import { abrirDB, recuperarInterrompidos, contarPorStatus } from './db.js';
 import { obterSessao } from './auth.js';
-import { carregarCatalogo } from './catalogo.js';
 import { $, esc, toast } from './ui.js';
 import * as telaLogin from './views/login.js';
 import * as telaUnidades from './views/unidades.js';
@@ -95,7 +94,7 @@ async function atualizarBadge() {
     const badge = $('#badge-pendentes');
     badge.hidden = n === 0;
     badge.textContent = n > 99 ? '99+' : String(n);
-    $('#btn-sync').classList.toggle('tem-erro', c.erro > 0);
+    $('#btn-sync').classList.toggle('tem-erro', c.erro + c.rejeitada > 0);
     $('#btn-sync').setAttribute('aria-label', n ? `Sincronização: ${n} fotos pendentes` : 'Sincronização');
   } catch (e) {
     console.warn(e);
@@ -125,7 +124,8 @@ function registrarServiceWorker() {
         duracao: 0,
         acao: { rotulo: 'Atualizar', fn: () => worker.postMessage('SKIP_WAITING') },
       });
-      if (reg.waiting && tinhaControlador) avisar(reg.waiting);
+      // Versão nova já baixada ao abrir a aplicação: aplica na hora (nada foi digitado ainda).
+      if (reg.waiting && tinhaControlador) reg.waiting.postMessage('SKIP_WAITING');
       reg.addEventListener('updatefound', () => {
         const novo = reg.installing;
         novo?.addEventListener('statechange', () => {
@@ -150,8 +150,6 @@ async function iniciar() {
       </div>`;
     return;
   }
-
-  await carregarCatalogo();
 
   $('#btn-sync').addEventListener('click', () => { location.hash = '#/sync'; });
   window.addEventListener('hashchange', navegar);

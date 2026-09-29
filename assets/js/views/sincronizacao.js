@@ -1,9 +1,8 @@
 /** Painel de sincronização: resumo por status, envio, erros e armazenamento. */
 import { MODO_DEMO } from '../config.js';
 import { STATUS, contarPorStatus, listarPorStatus, excluirSincronizados } from '../db.js';
-import { sair, sairComConfirmacao } from '../auth.js';
-import { atualizarCatalogoDoServidor } from '../catalogo.js';
-import { sincronizar, sincronizacaoEmAndamento, ErroAutenticacao } from '../sync.js';
+import { sairComConfirmacao, tratarErroDeSessao } from '../auth.js';
+import { sincronizar, sincronizacaoEmAndamento } from '../sync.js';
 import {
   $, esc, icone, toast, confirmar, formatarDataHora, formatarBytes, plural, ROTULO_STATUS,
 } from '../ui.js';
@@ -11,7 +10,7 @@ import {
 export async function render(el, { sessao, definirCabecalho }) {
   definirCabecalho({
     titulo: 'Sincronização',
-    subtitulo: MODO_DEMO ? 'Modo demonstração' : 'Envio ao sistema web',
+    subtitulo: MODO_DEMO ? 'Modo demonstração' : 'Envio ao SIAC',
     voltar: '#/unidades',
   });
 
@@ -29,8 +28,8 @@ export async function render(el, { sessao, definirCabecalho }) {
 
       ${MODO_DEMO ? `
         <p class="aviso">
-          <strong>Modo demonstração:</strong> nenhum servidor configurado. A sincronização é simulada
-          e as fotos não saem do aparelho. Configure <code>API_BASE_URL</code> em <code>assets/js/config.js</code>.
+          <strong>Modo demonstração:</strong> as fotos vão para um servidor simulado dentro do app,
+          seguindo o contrato da API do SIAC. Nada sai do aparelho. Configure <code>API_BASE_URL</code> em <code>assets/js/config.js</code>.
         </p>` : ''}
 
       <div id="lista-erros"></div>
@@ -41,7 +40,7 @@ export async function render(el, { sessao, definirCabecalho }) {
         <button type="button" class="btn btn-secundario" id="btn-limpar" hidden>Remover fotos já sincronizadas</button>
       </div>
 
-      <button type="button" class="btn btn-texto" id="btn-sair">${icone('sair')} Sair (${esc(sessao.nome)})</button>
+      <button type="button" class="btn btn-texto" id="btn-sair">${icone('sair')} Sair (${esc(sessao.usuario.nome)})</button>
     </section>`;
 
   const btnSync = $('#btn-sincronizar', el);
@@ -62,6 +61,7 @@ export async function render(el, { sessao, definirCabecalho }) {
 
     if (rodando) msg.textContent = textoProgresso || 'Enviando fotos… mantenha a aplicação aberta.';
     else if (!navigator.onLine) msg.textContent = 'Sem internet. Conecte-se para sincronizar.';
+    else if (fila === 0 && c.rejeitada) msg.textContent = `Nada aguardando envio. ${plural(c.rejeitada, 'foto foi rejeitada', 'fotos foram rejeitadas')} (veja abaixo).`;
     else if (fila === 0) msg.textContent = 'Tudo sincronizado.';
     else msg.textContent = `${plural(fila, 'foto aguardando', 'fotos aguardando')} envio.`;
 
@@ -69,21 +69,25 @@ export async function render(el, { sessao, definirCabecalho }) {
     $('span', btnSync).textContent = rodando ? 'Sincronizando…' : 'Sincronizar agora';
     progresso.hidden = !rodando;
 
-    const erros = await listarPorStatus(STATUS.ERRO);
-    $('#lista-erros', el).innerHTML = erros.length ? `
+    const [erros, rejeitadas] = await Promise.all([listarPorStatus(STATUS.ERRO), listarPorStatus(STATUS.REJEITADA)]);
+    const itemFila = (r) => `
+      <li>
+        <strong>${esc(r.unidadeNome)} · ${esc(r.testeNome)}</strong>
+        <small>${formatarDataHora(r.criadoEm)}${r.itemId ? ` · ${esc(r.itemId)}` : ''} · ${plural(r.tentativas, 'tentativa', 'tentativas')}</small>
+        <small class="texto-erro">${esc(r.ultimoErro || 'Erro desconhecido')}</small>
+      </li>`;
+    $('#lista-erros', el).innerHTML = (erros.length ? `
       <div class="card card-erro">
         <h2 class="secao">${plural(erros.length, 'foto com erro', 'fotos com erro')}</h2>
-        <p class="texto-suave">Serão reenviadas na próxima sincronização.</p>
-        <ul class="lista-erros">
-          ${erros.map((r) => `
-            <li>
-              <strong>${esc(r.unidadeNome)} · ${esc(r.testeNome)}</strong>
-              <small>${formatarDataHora(r.criadoEm)}${r.itemId ? ` · ${esc(r.itemId)}` : ''} · ${plural(r.tentativas, 'tentativa', 'tentativas')}</small>
-              <small class="texto-erro">${esc(r.ultimoErro || 'Erro desconhecido')}</small>
-            </li>`).join('')}
-        </ul>
-      </div>` : '';
-
+        <p class="texto-suave">Falha temporária. Serão reenviadas na próxima sincronização.</p>
+        <ul class="lista-erros">${erros.map(itemFila).join('')}</ul>
+      </div>` : '') + (rejeitadas.length ? `
+      <div class="card card-rejeitada">
+        <h2 class="secao">${plural(rejeitadas.length, 'foto rejeitada pelo SIAC', 'fotos rejeitadas pelo SIAC')}</h2>
+        <p class="texto-suave">Não serão reenviadas. Confira o motivo; se precisar, fale com a Auditoria.
+          Você pode excluí-las na tela do teste.</p>
+        <ul class="lista-erros">${rejeitadas.map(itemFila).join('')}</ul>
+      </div>` : '');
     const btnLimpar = $('#btn-limpar', el);
     btnLimpar.hidden = c.sincronizado === 0;
     btnLimpar.textContent = `Remover ${plural(c.sincronizado, 'foto já sincronizada', 'fotos já sincronizadas')}`;
@@ -105,17 +109,16 @@ export async function render(el, { sessao, definirCabecalho }) {
 
   btnSync.addEventListener('click', async () => {
     try {
-      atualizarCatalogoDoServidor(sessao.token);
       const r = await sincronizar();
       if (!r) return;
-      if (r.falhas) toast(`${r.enviados} enviada(s), ${r.falhas} com erro.`, { tipo: 'erro', duracao: 5000 });
-      else toast(`${plural(r.enviados, 'foto sincronizada', 'fotos sincronizadas')}.`, { tipo: 'sucesso' });
+      const partes = [`${plural(r.enviados, 'foto enviada', 'fotos enviadas')}`];
+      if (r.falhas) partes.push(`${r.falhas} com erro`);
+      if (r.rejeitadas) partes.push(plural(r.rejeitadas, 'rejeitada', 'rejeitadas'));
+      const houveProblema = r.falhas || r.rejeitadas;
+      toast(`${partes.join(', ')}.${r.interrompida ? ` Interrompida: ${r.interrompida}` : ''}`,
+        { tipo: houveProblema ? 'erro' : 'sucesso', duracao: houveProblema ? 6000 : 3500 });
     } catch (e) {
-      toast(e.message, { tipo: 'erro', duracao: 5000 });
-      if (e instanceof ErroAutenticacao) {
-        await sair();
-        location.hash = '#/login';
-      }
+      if (!(await tratarErroDeSessao(e))) toast(e.message, { tipo: 'erro', duracao: 5000 });
     } finally {
       atualizar();
     }

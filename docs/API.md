@@ -1,93 +1,46 @@
-# Contrato da API (sistema web)
+# Integração com o SIAC
 
-Endpoints que o sistema web precisa expor para a aplicação mobile. Base: `CONFIG.API_BASE_URL` (ex.: `https://auditoria.suaempresa.com.br/api/mobile`).
+O contrato oficial está em [CONTRATO-API-MOBILE-v1.md](CONTRATO-API-MOBILE-v1.md) (v1.0, 29/09/2026).
+O app já implementa o contrato inteiro e, enquanto a API não existe, conversa com um
+servidor simulado ([assets/js/api-mock.js](../assets/js/api-mock.js)) que responde da mesma forma.
 
-Requisitos gerais:
+Para ligar no SIAC real: preencher `API_BASE_URL` em [assets/js/config.js](../assets/js/config.js).
 
-- **HTTPS** obrigatório.
-- **CORS** liberado para a origem da aplicação (ex.: `https://SEU-USUARIO.github.io`), com os headers `Authorization`, `Content-Type` e `Idempotency-Key`.
-- Erros podem devolver `{ "erro": "mensagem legível" }`, que é exibida ao usuário.
+## O que o app usa do contrato
 
----
-
-## `POST /auth/login`
-
-Valida o auditado (ex.: AD/LDAP) e devolve um token.
-
-**Requisição** (`application/json`)
-
-```json
-{ "usuario": "fulano.silva", "senha": "••••••" }
-```
-
-**Respostas**
-
-| Código | Corpo |
+| Rota | Onde no app |
 |---|---|
-| `200` | `{ "token": "eyJ...", "nome": "Fulano da Silva" }` |
-| `401` | Usuário ou senha inválidos |
+| `POST /auth/login`, `/auth/refresh`, `/auth/logout` | [auth.js](../assets/js/auth.js), [api.js](../assets/js/api.js) |
+| `GET /filiais` | tela de filiais |
+| `GET /filiais/{id}/testes` | tela de testes da filial |
+| `GET /testes/{modulo}/{id}` | orientação do auditor na tela do teste |
+| `POST /testes/{modulo}/{id}/fotos` | envio de cada foto ([sync.js](../assets/js/sync.js)) |
+| `GET /fotos/{client_uuid}` | conferência antes de reenviar um envio que caiu sem resposta |
+| `POST /testes/{modulo}/{id}/fotos/concluir` | aviso único ao auditor quando a fila do teste esvazia |
 
-O token deve valer pelo menos o tempo de `SESSAO_HORAS` (padrão 24 h), pois o auditado pode ficar offline durante a auditoria.
+Ainda não usados: `GET /me`, `DELETE /fotos/{uuid}`, `GET /fotos/{uuid}/miniatura`.
 
----
+## Ajustes a pedir ao time do SIAC
 
-## `GET /catalogo`
-
-Unidades e testes disponíveis. Header: `Authorization: Bearer <token>`.
-
-```json
-{
-  "unidades": [
-    { "id": "belem", "nome": "Belém", "uf": "PA", "testes": ["avarias", "organizacao"] }
-  ],
-  "testes": [
-    {
-      "id": "avarias",
-      "nome": "Avarias",
-      "descricao": "Produtos e embalagens avariados",
-      "icone": "alerta",
-      "rotuloItem": "Código do produto / NF",
-      "itemObrigatorio": false
-    }
-  ]
-}
-```
-
-Ícones disponíveis: `alerta`, `grade`, `caixa`, `camera`, `local`, `prancheta`, `galeria`.
-
----
-
-## `POST /registros`
-
-Recebe **uma foto** com seus metadados.
-
-**Headers**
-
-```
-Authorization: Bearer <token>
-Idempotency-Key: <id do registro (UUID)>
-```
-
-**Corpo** (`multipart/form-data`)
-
-| Campo | Tipo | Descrição |
-|---|---|---|
-| `id` | texto | UUID gerado no aparelho (igual ao `Idempotency-Key`) |
-| `unidadeId` | texto | |
-| `testeId` | texto | |
-| `usuario` | texto | Usuário informado no login (o servidor deve confiar no token) |
-| `itemId` | texto | Pode ser vazio |
-| `observacao` | texto | Pode ser vazio |
-| `criadoEm` | texto | ISO 8601, horário da captura no aparelho |
-| `foto` | arquivo | JPEG, nome `<id>.jpg` |
-
-**Respostas**
-
-| Código | Significado para o app |
-|---|---|
-| `200` / `201` | Gravado → `sincronizado` |
-| `409` | Já existia um registro com esse `id` → `sincronizado` (não duplica) |
-| `401` | Token inválido/expirado → registro volta a `pendente`, usuário refaz login |
-| outros | → `erro`, reenviado na próxima sincronização |
-
-**Idempotência (obrigatório):** o servidor deve ter uma restrição única sobre `id`. Se a mesma foto chegar duas vezes (ex.: a resposta se perdeu na rede), a segunda deve ser ignorada e responder `200` ou `409`.
+1. **CORS (bloqueante).** O app é uma página web publicada em `https://felipeclash243-ops.github.io`,
+   outra origem em relação à API. Sem CORS o navegador bloqueia todas as chamadas. O blueprint
+   `/api/mobile/v1` precisa:
+   - responder o preflight `OPTIONS`;
+   - `Access-Control-Allow-Origin` só para as origens do app (configurável);
+   - `Access-Control-Allow-Headers: Authorization, Content-Type, X-App-Version, X-Device-Id`;
+   - `Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS`;
+   - `Access-Control-Expose-Headers: Retry-After` (para o app ler o tempo de espera do `429`).
+2. **Onde guardar o refresh token.** O contrato pede Keychain/Keystore, que só existem em app nativo.
+   Num app web, o refresh token fica no banco local do navegador (IndexedDB) da origem do app.
+   Proteções já adotadas: nenhum script de terceiros na página, access token só em memória,
+   refresh rotativo com detecção de reuso e vinculado ao `device_id`. Confirmar que isso é aceito.
+3. **Código do produto / NF.** No teste de Avarias o código é obrigatório em cada foto. A v1 só tem
+   `legenda`, então o app envia `"<código> | <observação>"`. Pedir campos opcionais separados
+   (ex.: `item_codigo` e `observacao`) para o auditor poder filtrar e conferir pelo código.
+4. **Fotos e comentário por linha de tabela (pendência 3 do contrato).** Há testes com tabelas em que
+   cada linha precisa de fotos e comentário. Priorizar na próxima versão: listar as linhas do teste,
+   aceitar `item_id` no upload e uma rota para o comentário da linha.
+5. **Active Directory (pendência 1).** Se a API rodar fora da rede interna, o login com senha do AD
+   não funciona. Definir a alternativa (ex.: `POST /auth/parear`) antes da publicação.
+6. **`/health`.** Citado nas convenções, mas não definido. Sugestão: `GET /health` → `200 {"status":"ok"}`.
+7. **Domínios** de produção e homologação (pendência 2).

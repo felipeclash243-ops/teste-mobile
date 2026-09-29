@@ -1,57 +1,52 @@
 /**
- * Catálogo de unidades e testes.
- * Usa o catálogo do servidor salvo no aparelho; se não houver, usa o padrão.
+ * Filiais e testes do usuário (contrato, seções 4 e 5).
+ *
+ * As listas vêm do SIAC e ficam guardadas no aparelho para uso offline.
+ * As telas mostram primeiro o que está guardado e atualizam quando há internet.
  */
-import { CONFIG, MODO_DEMO } from './config.js';
-import { UNIDADES, TESTES } from './data/catalogo-padrao.js';
+import { requisicao } from './api.js';
 import { getMeta, setMeta } from './db.js';
 
-let catalogo = { unidades: UNIDADES, testes: TESTES };
-
-function valido(c) {
-  return c && Array.isArray(c.unidades) && Array.isArray(c.testes) && c.unidades.length > 0;
+/** { filiais: [...], atualizadoEm } ou null se nunca baixou. */
+export function filiaisSalvas() {
+  return getMeta('filiais').then((v) => v || null);
 }
 
-export async function carregarCatalogo() {
-  try {
-    const salvo = await getMeta('catalogo');
-    if (valido(salvo)) catalogo = salvo;
-  } catch (e) {
-    console.warn('Catálogo salvo indisponível, usando o padrão.', e);
-  }
+export async function atualizarFiliais() {
+  const r = await requisicao('/filiais');
+  const dados = { filiais: r.filiais || [], atualizadoEm: new Date().toISOString() };
+  await setMeta('filiais', dados);
+  return dados;
 }
 
-/** Busca o catálogo no sistema web e salva no aparelho. Falhas são silenciosas (uso offline). */
-export async function atualizarCatalogoDoServidor(token) {
-  if (MODO_DEMO || !navigator.onLine) return false;
-  try {
-    const resp = await fetch(`${CONFIG.API_BASE_URL}/catalogo`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!resp.ok) return false;
-    const dados = await resp.json();
-    if (!valido(dados)) return false;
-    catalogo = { unidades: dados.unidades, testes: dados.testes };
-    await setMeta('catalogo', catalogo);
-    return true;
-  } catch {
-    return false;
-  }
+/** { filial, disponiveis, indisponiveis, atualizadoEm } ou null. */
+export function testesSalvos(filialId) {
+  return getMeta(`testes:${filialId}`).then((v) => v || null);
 }
 
-export function listarUnidades() {
-  return [...catalogo.unidades].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+export async function atualizarTestes(filialId) {
+  const r = await requisicao(`/filiais/${encodeURIComponent(filialId)}/testes`);
+  const dados = {
+    filial: r.filial,
+    disponiveis: r.disponiveis || [],
+    indisponiveis: r.indisponiveis || [],
+    atualizadoEm: new Date().toISOString(),
+  };
+  await setMeta(`testes:${filialId}`, dados);
+  return dados;
 }
 
-export function obterUnidade(id) {
-  return catalogo.unidades.find((u) => u.id === id);
+/** Detalhe do teste (orientação), guardado para uso offline. */
+export function detalheSalvo(ref) {
+  return getMeta(`teste:${ref}`).then((v) => v || null);
 }
 
-export function obterTeste(id) {
-  return catalogo.testes.find((t) => t.id === id);
+export async function atualizarDetalhe(modulo, id) {
+  const r = await requisicao(`/testes/${encodeURIComponent(modulo)}/${encodeURIComponent(id)}`);
+  await setMeta(`teste:${r.ref}`, r);
+  return r;
 }
 
-export function testesDaUnidade(unidadeId) {
-  const unidade = obterUnidade(unidadeId);
-  return unidade ? unidade.testes.map(obterTeste).filter(Boolean) : [];
+export function todosOsTestes(dados) {
+  return dados ? [...dados.disponiveis, ...dados.indisponiveis] : [];
 }

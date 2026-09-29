@@ -1,6 +1,6 @@
 # Auditoria de Filiais — Mobile
 
-Aplicação **mobile-first** de apoio aos testes de auditoria. O auditado usa o navegador do celular para registrar evidências fotográficas na filial, **mesmo sem internet**. Os registros ficam salvos no aparelho e são sincronizados com o sistema web quando houver conexão.
+Aplicação **mobile-first** de apoio aos testes de auditoria. O auditado usa o navegador do celular para registrar evidências fotográficas na filial, **mesmo sem internet**. Os registros ficam salvos no aparelho e são sincronizados com o **SIAC** (sistema web de auditoria) quando houver conexão.
 
 - Sem etapa de build: HTML, CSS e JavaScript puros (módulos ES).
 - Funciona offline (PWA com service worker) e pode ser instalada na tela inicial do celular.
@@ -8,11 +8,11 @@ Aplicação **mobile-first** de apoio aos testes de auditoria. O auditado usa o 
 
 ## Fluxo
 
-1. **Tela de bloqueio**: login do auditado.
-2. **Unidade**: seleção da filial (Belém, Rio de Janeiro, Vitória…), com busca.
-3. **Teste**: testes disponíveis para a unidade (Avarias, Organização, Estoque…).
-4. **Fotos**: câmera ou galeria. Cada foto é comprimida e salva no aparelho com unidade, teste, data/hora, usuário, identificação do item e observação.
-5. **Sincronização**: envio ao sistema web com status **Pendente → Sincronizando → Sincronizado / Erro**.
+1. **Tela de bloqueio**: login do auditado com e-mail e senha do SIAC.
+2. **Filial**: filiais vinculadas ao usuário, com busca e quantos testes aguardam a filial.
+3. **Teste**: testes da filial vindos do SIAC. Só os "Aguardando a filial" aceitam fotos.
+4. **Fotos**: câmera ou galeria (várias fotos, identificadas uma por uma). Cada foto é comprimida, recebe um hash SHA-256 e fica salva no aparelho.
+5. **Sincronização**: envio ao SIAC com status **Pendente → Sincronizando → Sincronizado**, **Erro** (tenta de novo) ou **Rejeitada** (o SIAC não aceita, por exemplo teste já fechado).
 
 ## Estrutura
 
@@ -26,24 +26,27 @@ Aplicação **mobile-first** de apoio aos testes de auditoria. O auditado usa o 
 │   └── js/
 │       ├── app.js              Inicialização e roteador (#/rotas)
 │       ├── versao.js           Versão da aplicação (alterar a cada publicação)
-│       ├── config.js           Configuração (URL da API, compressão, sessão)
+│       ├── config.js           Configuração (URL da API, compressão, tempos)
 │       ├── db.js               Banco local (IndexedDB)
+│       ├── api.js              Cliente da API do SIAC (tokens, cabeçalhos, erros)
+│       ├── api-mock.js         Servidor simulado do SIAC (modo demonstração)
 │       ├── auth.js             Login e sessão
-│       ├── catalogo.js         Unidades e testes (servidor ou padrão)
-│       ├── sync.js             Fila de sincronização com o sistema web
+│       ├── catalogo.js         Filiais e testes (baixados do SIAC, guardados offline)
+│       ├── sync.js             Fila de envio das fotos ao SIAC
 │       ├── imagem.js           Redimensionamento/compressão das fotos
 │       ├── ui.js               Ícones, toasts, diálogos, formatação
 │       ├── data/
-│       │   └── catalogo-padrao.js   Unidades e testes padrão
+│       │   └── modulos.js      Regras de tela por módulo (ícone, código obrigatório)
 │       └── views/              Uma tela por arquivo
 │           ├── login.js
-│           ├── unidades.js
+│           ├── unidades.js     Filiais
 │           ├── testes.js
 │           ├── teste.js        Captura de fotos
 │           └── sincronizacao.js
 └── docs/
     ├── ARQUITETURA.md          Banco local, estados e cenários de falha
-    └── API.md                  Contrato que o sistema web deve implementar
+    ├── CONTRATO-API-MOBILE-v1.md  Contrato oficial da API do SIAC
+    └── API.md                  Como o app usa o contrato e ajustes pendentes com o SIAC
 ```
 
 ## Rodar localmente
@@ -57,7 +60,7 @@ py -m http.server 8080
 npx serve .
 ```
 
-Acesse `http://localhost:8080`. Sem API configurada, a aplicação roda em **modo demonstração**: qualquer usuário com a senha `1234` e sincronização simulada.
+Acesse `http://localhost:8080`. Sem API configurada, a aplicação roda em **modo demonstração**: qualquer e-mail com a senha `1234`, contra um servidor simulado que segue o contrato do SIAC.
 
 ## Publicar no GitHub Pages
 
@@ -81,24 +84,23 @@ Acesse `http://localhost:8080`. Sem API configurada, a aplicação roda em **mod
 
 1. Altere `self.APP_VERSAO` em [`assets/js/versao.js`](assets/js/versao.js) (ex.: `1.0.0` → `1.0.1`).
 2. Se criou arquivos novos em `assets/`, adicione-os à lista `ARQUIVOS` em [`sw.js`](sw.js).
-3. Envie ao GitHub. Os celulares mostram **"Nova versão disponível → Atualizar"**.
+3. Envie ao GitHub. Os celulares passam a usar a versão nova quando a aplicação é reaberta.
 
 Sem alterar a versão, os aparelhos continuam usando a versão em cache.
 
-## Conectar ao sistema web
+## Conectar ao SIAC
 
-1. Implemente no sistema web os endpoints descritos em [`docs/API.md`](docs/API.md).
+1. O SIAC implementa o contrato [`docs/CONTRATO-API-MOBILE-v1.md`](docs/CONTRATO-API-MOBILE-v1.md), com os ajustes listados em [`docs/API.md`](docs/API.md) (o principal é liberar CORS para o endereço do app).
 2. Preencha `API_BASE_URL` em [`assets/js/config.js`](assets/js/config.js).
-3. Libere CORS no sistema web para o endereço onde a aplicação está publicada.
 
 Com a API configurada, o modo demonstração é desativado automaticamente.
 
 ## Segurança
 
 - No **modo demonstração**, a tela de bloqueio é apenas visual: a senha está no código. **Não use em produção sem API.**
-- Com API, a autenticação é feita pelo sistema web (ex.: AD/LDAP), que devolve um token. O aparelho guarda apenas o token, nunca a senha.
+- Com API, a autenticação é feita pelo SIAC. O aparelho nunca guarda a senha: o token de acesso fica só em memória e o token de renovação (30 dias, rotativo) no banco local.
 - As fotos ficam no armazenamento do navegador do aparelho até serem sincronizadas e removidas.
 
-## Unidades e testes
+## Filiais, testes e regras por módulo
 
-Enquanto a API não fornece o catálogo, edite [`assets/js/data/catalogo-padrao.js`](assets/js/data/catalogo-padrao.js) e publique uma nova versão.
+Filiais e testes vêm do SIAC. O que é regra de tela do app (ícone de cada módulo, rótulo e obrigatoriedade do código do produto/NF) fica em [`assets/js/data/modulos.js`](assets/js/data/modulos.js).

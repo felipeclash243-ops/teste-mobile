@@ -3,6 +3,12 @@
  * reduzindo o uso de espaço no aparelho e o tempo de envio.
  */
 
+/** SHA-256 do conteúdo, em hexadecimal minúsculo (campo sha256 do upload). */
+export async function sha256Hex(blob) {
+  const hash = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function carregarComoImagem(arquivo) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(arquivo);

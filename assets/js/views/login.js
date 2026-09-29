@@ -1,12 +1,11 @@
-/** Tela de bloqueio / login. */
+/** Tela de bloqueio / login (contrato, seção 3.1). */
 import { CONFIG, MODO_DEMO } from '../config.js';
-import { entrar, ultimoUsuario } from '../auth.js';
-import { atualizarCatalogoDoServidor } from '../catalogo.js';
+import { entrar, ultimoEmail } from '../auth.js';
 import { $, esc, icone } from '../ui.js';
 
 export async function render(el, { definirCabecalho }) {
   definirCabecalho(null);
-  const usuarioSalvo = (await ultimoUsuario()) || '';
+  const emailSalvo = (await ultimoEmail()) || '';
 
   el.innerHTML = `
     <section class="login">
@@ -18,9 +17,9 @@ export async function render(el, { definirCabecalho }) {
 
       <form class="card login-form" novalidate>
         <label class="campo">
-          <span>Usuário</span>
-          <input name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off"
-                 spellcheck="false" required value="${esc(usuarioSalvo)}">
+          <span>E-mail</span>
+          <input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" required value="${esc(emailSalvo)}">
         </label>
         <label class="campo">
           <span>Senha</span>
@@ -32,8 +31,8 @@ export async function render(el, { definirCabecalho }) {
 
       ${MODO_DEMO ? `
         <p class="aviso">
-          <strong>Modo demonstração</strong> — servidor não configurado.
-          Use qualquer usuário e a senha <strong>${esc(CONFIG.DEMO_SENHA)}</strong>.
+          <strong>Modo demonstração</strong>: servidor simulado.
+          Use qualquer e-mail e a senha <strong>${esc(CONFIG.DEMO_SENHA)}</strong>.
         </p>` : ''}
 
       <p class="versao">v${esc(CONFIG.VERSAO)}</p>
@@ -42,7 +41,7 @@ export async function render(el, { definirCabecalho }) {
   const form = $('form', el);
   const erro = $('.msg-erro', el);
   const botao = $('button[type=submit]', el);
-  (usuarioSalvo ? form.senha : form.usuario).focus();
+  (emailSalvo ? form.senha : form.email).focus();
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -50,11 +49,12 @@ export async function render(el, { definirCabecalho }) {
     botao.disabled = true;
     botao.textContent = 'Entrando…';
     try {
-      const sessao = await entrar(form.usuario.value, form.senha.value);
-      await atualizarCatalogoDoServidor(sessao.token);
+      await entrar(form.email.value, form.senha.value);
       location.hash = '#/unidades';
     } catch (e) {
-      erro.textContent = e.message;
+      erro.textContent = e.codigo === 'muitas_tentativas' && e.retryAfter
+        ? `${e.message} Tente de novo em ${Math.ceil(e.retryAfter / 60)} min.`
+        : e.message;
       erro.hidden = false;
       form.senha.value = '';
       form.senha.focus();

@@ -1,19 +1,34 @@
 /**
- * Sincronização dos registros locais com o sistema web.
+ * Sincronização das fotos com o SIAC (contrato, seções 6 e 7).
  *
- * Regras:
- *  - Envia um registro por vez, do mais antigo para o mais novo.
- *  - Estado: pendente -> sincronizando -> sincronizado | erro.
- *  - O id do registro (UUID gerado no aparelho) vai no header Idempotency-Key;
- *    o servidor deve ignorar reenvios do mesmo id (responder 200 ou 409).
- *  - Registros com erro voltam para a fila na próxima sincronização.
- *  - Se a conexão cair, a sincronização para e o restante continua pendente.
+ *  - Uma foto por vez, da mais antiga para a mais nova.
+ *  - client_uuid (id do registro) + sha256 tornam o reenvio seguro: o servidor
+ *    responde 200 com a mesma foto e não duplica.
+ *  - Se um envio caiu sem resposta, antes de reenviar pergunta GET /fotos/{uuid}.
+ *  - Erro temporário -> "erro" (tenta de novo); erro definitivo -> "rejeitada".
+ *  - Sessão expirada: para, mantém a fila e pede login.
+ *  - Quando um teste não tem mais fotos na fila -> POST .../fotos/concluir
+ *    (uma notificação ao auditor por lote).
  */
-import { CONFIG, MODO_DEMO } from './config.js';
-import { STATUS, listarParaEnvio, atualizarRegistro } from './db.js';
-import { obterSessao } from './auth.js';
+import { CONFIG } from './config.js';
+import { STATUS, listarParaEnvio, listarPorStatus, atualizarRegistro } from './db.js';
+import { requisicao, ErroApi } from './api.js';
+import { sha256Hex } from './imagem.js';
 
-export class ErroAutenticacao extends Error {}
+/** Erros definitivos: a foto não será aceita mesmo reenviando. */
+const DEFINITIVOS = new Set([
+  'teste_indisponivel', 'teste_nao_encontrado', 'uuid_reutilizado',
+  'formato_nao_permitido', 'arquivo_grande_demais', 'sem_permissao',
+  'filial_fora_do_escopo', 'requisicao_invalida', 'registro_antigo',
+]);
+
+/** Erros que interrompem a fila inteira (a foto volta para pendente). */
+const INTERROMPEM = new Set([
+  'sessao_expirada', 'conta_bloqueada', 'versao_desatualizada', 'ad_indisponivel',
+]);
+
+/** Falhas em que o servidor pode ter recebido a foto sem conseguirmos a resposta. */
+const SEM_RESPOSTA = new Set(['tempo_esgotado', 'sem_rede']);
 
 let emAndamento = false;
 
@@ -25,63 +40,76 @@ function emitir(nome, detail) {
   window.dispatchEvent(new CustomEvent(nome, { detail }));
 }
 
-const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+function legendaDe(r) {
+  const partes = [r.itemId, r.observacao].map((s) => (s || '').trim()).filter(Boolean);
+  return partes.join(' | ').slice(0, 500);
+}
 
-async function enviarRegistro(registro, sessao) {
-  if (MODO_DEMO) {
-    await esperar(300 + Math.random() * 500);
-    return;
+async function enviarRegistro(r) {
+  if (!r.modulo || !r.testeNumId) {
+    throw new ErroApi(0, 'registro_antigo', 'Foto registrada em uma versão de testes anterior; não pode ser enviada.');
+  }
+
+  // O envio anterior caiu sem resposta: confere se a foto já chegou.
+  if (r.verificarAntes) {
+    try {
+      return await requisicao(`/fotos/${r.id}`);
+    } catch (e) {
+      if (e.codigo !== 'foto_nao_encontrada') throw e;
+    }
   }
 
   const form = new FormData();
-  for (const campo of ['id', 'unidadeId', 'testeId', 'usuario', 'itemId', 'observacao', 'criadoEm']) {
-    form.append(campo, registro[campo] ?? '');
+  form.append('arquivo', r.foto, `${r.id}.jpg`);
+  form.append('client_uuid', r.id);
+  form.append('capturada_em', r.criadoEm);
+  form.append('sha256', r.sha256 || await sha256Hex(r.foto));
+  const legenda = legendaDe(r);
+  if (legenda) form.append('legenda', legenda);
+
+  return requisicao(`/testes/${encodeURIComponent(r.modulo)}/${encodeURIComponent(r.testeNumId)}/fotos`, {
+    metodo: 'POST', form, timeout: CONFIG.SYNC_TIMEOUT_MS,
+  });
+}
+
+/** Avisa o auditor dos testes cuja fila esvaziou (uma vez por lote). */
+async function concluirTestes() {
+  const naFila = new Set((await listarParaEnvio()).map((r) => r.testeId));
+  const aAvisar = (await listarPorStatus(STATUS.SINCRONIZADO)).filter((r) => !r.notificadoEm && r.modulo);
+
+  const porTeste = new Map();
+  aAvisar.forEach((r) => {
+    if (naFila.has(r.testeId)) return;
+    if (!porTeste.has(r.testeId)) porTeste.set(r.testeId, []);
+    porTeste.get(r.testeId).push(r);
+  });
+
+  for (const registros of porTeste.values()) {
+    const { modulo, testeNumId } = registros[0];
+    try {
+      await requisicao(`/testes/${encodeURIComponent(modulo)}/${encodeURIComponent(testeNumId)}/fotos/concluir`, {
+        metodo: 'POST', json: { client_uuids: registros.map((r) => r.id) },
+      });
+      const agora = new Date().toISOString();
+      for (const r of registros) await atualizarRegistro(r.id, { notificadoEm: agora });
+    } catch (e) {
+      // Sem aviso agora; tenta de novo na próxima sincronização. As fotos já estão no SIAC.
+      console.warn('Falha ao avisar o auditor:', e);
+    }
   }
-  form.append('foto', registro.foto, `${registro.id}.jpg`);
-
-  const controle = new AbortController();
-  const limite = setTimeout(() => controle.abort(), CONFIG.SYNC_TIMEOUT_MS);
-  let resp;
-  try {
-    resp = await fetch(`${CONFIG.API_BASE_URL}/registros`, {
-      method: 'POST',
-      body: form,
-      headers: {
-        Authorization: `Bearer ${sessao.token}`,
-        'Idempotency-Key': registro.id,
-      },
-      signal: controle.signal,
-    });
-  } catch (e) {
-    throw new Error(e.name === 'AbortError' ? 'Tempo de envio esgotado.' : 'Falha de conexão com o servidor.');
-  } finally {
-    clearTimeout(limite);
-  }
-
-  // 409 = o servidor já possui este registro (reenvio): tratado como sucesso.
-  if (resp.ok || resp.status === 409) return;
-  if (resp.status === 401) throw new ErroAutenticacao('Sessão expirada. Entre novamente para sincronizar.');
-
-  let mensagem = `Servidor respondeu HTTP ${resp.status}.`;
-  try {
-    const corpo = await resp.json();
-    if (corpo?.erro) mensagem = corpo.erro;
-  } catch { /* corpo sem JSON */ }
-  throw new Error(mensagem);
 }
 
 /**
- * Envia todos os registros pendentes/com erro.
- * Retorna { total, enviados, falhas } ou null se já havia uma sincronização em andamento.
+ * Envia todas as fotos pendentes ou com erro.
+ * Retorna { total, enviados, falhas, rejeitadas } ou null se já havia uma sincronização em andamento.
+ * Lança ErroApi quando a fila precisa parar (sem internet, sessão expirada, versão desatualizada).
  */
 export async function sincronizar() {
   if (emAndamento) return null;
-  if (!navigator.onLine) throw new Error('Sem conexão com a internet.');
-  const sessao = await obterSessao();
-  if (!sessao) throw new ErroAutenticacao('Sessão expirada. Entre novamente.');
+  if (!navigator.onLine) throw new ErroApi(0, 'sem_rede', 'Sem conexão com a internet.');
 
   emAndamento = true;
-  const resultado = { total: 0, enviados: 0, falhas: 0 };
+  const resultado = { total: 0, enviados: 0, falhas: 0, rejeitadas: 0, interrompida: null };
   try {
     const fila = await listarParaEnvio();
     resultado.total = fila.length;
@@ -90,28 +118,43 @@ export async function sincronizar() {
     for (const registro of fila) {
       await atualizarRegistro(registro.id, { status: STATUS.SINCRONIZANDO });
       try {
-        await enviarRegistro(registro, sessao);
+        const foto = await enviarRegistro(registro);
         await atualizarRegistro(registro.id, {
           status: STATUS.SINCRONIZADO,
           sincronizadoEm: new Date().toISOString(),
+          anexoId: foto?.anexo_id ?? null,
           ultimoErro: null,
+          erroCodigo: null,
+          verificarAntes: false,
         });
         resultado.enviados++;
-      } catch (erro) {
-        if (erro instanceof ErroAutenticacao) {
+      } catch (falha) {
+        const e = falha instanceof ErroApi ? falha : new ErroApi(0, 'erro_app', falha.message);
+        if (INTERROMPEM.has(e.codigo)) {
           await atualizarRegistro(registro.id, { status: STATUS.PENDENTE });
-          throw erro;
+          throw e;
         }
+        const definitivo = DEFINITIVOS.has(e.codigo);
         await atualizarRegistro(registro.id, {
-          status: STATUS.ERRO,
+          status: definitivo ? STATUS.REJEITADA : STATUS.ERRO,
           tentativas: (registro.tentativas || 0) + 1,
-          ultimoErro: erro.message,
+          ultimoErro: e.message,
+          erroCodigo: e.codigo,
+          verificarAntes: registro.verificarAntes || SEM_RESPOSTA.has(e.codigo),
         });
-        resultado.falhas++;
-        if (!navigator.onLine) break;
+        if (definitivo) resultado.rejeitadas++;
+        else resultado.falhas++;
+
+        // Rede caiu, servidor fora do ar ou limite de tentativas: para e deixa o resto na fila.
+        if (SEM_RESPOSTA.has(e.codigo) || e.status >= 500 || e.status === 429) {
+          resultado.interrompida = e.message;
+          break;
+        }
       }
-      emitir('sync:progresso', { ...resultado, feitos: resultado.enviados + resultado.falhas });
+      emitir('sync:progresso', { ...resultado, feitos: resultado.enviados + resultado.falhas + resultado.rejeitadas });
     }
+
+    await concluirTestes();
   } finally {
     emAndamento = false;
     emitir('sync:fim', resultado);

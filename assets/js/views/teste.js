@@ -1,35 +1,51 @@
 /** Registro de fotos de um teste: câmera, galeria e lista de fotos com status. */
 import { CONFIG } from '../config.js';
-import { obterUnidade, obterTeste } from '../catalogo.js';
+import { testesSalvos, todosOsTestes, detalheSalvo, atualizarDetalhe } from '../catalogo.js';
 import { STATUS, salvarRegistro, listarPorTeste, obterRegistro, excluirRegistro } from '../db.js';
-import { comprimirImagem } from '../imagem.js';
+import { comprimirImagem, sha256Hex } from '../imagem.js';
+import { regrasDoModulo } from '../data/modulos.js';
 import {
-  $, esc, icone, toast, chipStatus, formatarDataHora, formatarBytes,
+  $, esc, icone, toast, chipStatus, formatarDataHora, formatarBytes, formatarData,
   abrirDialogo, confirmar, telaVazia, plural,
 } from '../ui.js';
 
 export async function render(el, { params, sessao, definirCabecalho }) {
-  const unidade = obterUnidade(params.unidadeId);
-  const teste = obterTeste(params.testeId);
-  if (!unidade || !teste || !unidade.testes.includes(teste.id)) {
-    definirCabecalho({ titulo: 'Teste não encontrado', voltar: '#/unidades' });
-    el.innerHTML = telaVazia('Este teste não está disponível para a unidade.');
+  const dados = await testesSalvos(params.unidadeId);
+  const teste = todosOsTestes(dados).find((t) => t.ref === params.testeId);
+  const voltar = `#/u/${encodeURIComponent(params.unidadeId)}`;
+  if (!teste) {
+    definirCabecalho({ titulo: 'Teste não encontrado', voltar });
+    el.innerHTML = telaVazia('Este teste não está na lista da filial. Volte e toque em Atualizar.', voltar, 'Voltar aos testes');
     return;
   }
-
-  const voltar = `#/u/${encodeURIComponent(unidade.id)}`;
+  const unidade = { id: params.unidadeId, nome: dados.filial?.nome || '' };
   definirCabecalho({ titulo: teste.nome, subtitulo: unidade.nome, voltar });
 
-  const rotuloItem = teste.rotuloItem || 'Identificação do item';
+  const regras = regrasDoModulo(teste.modulo);
+  const rotuloItem = regras.rotuloItem;
+  const detalhe = await detalheSalvo(teste.ref);
 
   el.innerHTML = `
     <section class="captura">
+      <div class="card card-teste">
+        <div class="teste-status">
+          <span class="chip chip-teste${teste.aceita_fotos ? ' chip-teste-aberto' : ''}">${esc(teste.status_rotulo)}</span>
+          ${teste.prazo_filial ? `<span class="texto-suave">Prazo da filial: ${formatarData(teste.prazo_filial)}</span>` : ''}
+        </div>
+        <p id="orientacao" class="orientacao"${detalhe?.orientacao ? '' : ' hidden'}>${esc(detalhe?.orientacao || '')}</p>
+      </div>
+
+      ${teste.aceita_fotos ? '' : `
+        <p class="aviso">Este teste não aceita fotos no momento (${esc(teste.status_rotulo)}).
+          As fotos já registradas continuam abaixo.</p>`}
+
+      <div id="area-captura"${teste.aceita_fotos ? '' : ' hidden'}>
       <div class="card">
         <label class="campo">
-          <span>${esc(rotuloItem)} ${teste.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
+          <span>${esc(rotuloItem)} ${regras.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
           <input id="item" autocomplete="off" autocapitalize="characters" enterkeyhint="done"
-                 aria-describedby="item-erro" ${teste.itemObrigatorio ? 'required aria-required="true"' : ''}
-                 placeholder="${teste.itemObrigatorio ? 'Preencha antes de cada foto' : 'Aplicado à próxima foto'}">
+                 aria-describedby="item-erro" ${regras.itemObrigatorio ? 'required aria-required="true"' : ''}
+                 placeholder="${regras.itemObrigatorio ? 'Obrigatório para tirar foto' : 'Aplicado à próxima foto'}">
           <small class="campo-erro" id="item-erro" hidden>Preencha este campo antes de tirar a foto.</small>
         </label>
         <label class="campo">
@@ -50,6 +66,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
       </div>
       <p class="dica">Na galeria, selecione várias fotos e identifique uma por uma em seguida.<br>
         As fotos ficam salvas neste aparelho até a sincronização.</p>
+      </div>
 
       <h2 class="secao">Fotos deste teste <span id="contador"></span></h2>
       <div class="grade-fotos" id="grade"></div>
@@ -66,7 +83,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
   }
 
   async function carregarGrade() {
-    const registros = await listarPorTeste(unidade.id, teste.id);
+    const registros = await listarPorTeste(unidade.id, teste.ref);
     liberarUrls();
     $('#contador', el).textContent = registros.length ? `(${registros.length})` : '';
     if (!registros.length) {
@@ -104,7 +121,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
 
   /** Campo obrigatório vazio: mostra o erro e devolve o foco ao campo. */
   function itemValido() {
-    if (!teste.itemObrigatorio || inputItem.value.trim()) return true;
+    if (!regras.itemObrigatorio || inputItem.value.trim()) return true;
     mostrarErroItem(true);
     inputItem.focus();
     return false;
@@ -134,6 +151,8 @@ export async function render(el, { params, sessao, definirCabecalho }) {
             usuario: sessao.usuario,
             itemId, observacao,
             foto: blob, largura, altura,
+            // Hash calculado na captura (contrato, seção 7): o servidor confere se o arquivo chegou íntegro.
+            sha256: await sha256Hex(blob),
           });
           salvas++;
         } catch (e) {
@@ -154,7 +173,9 @@ export async function render(el, { params, sessao, definirCabecalho }) {
       const falhas = itens.length - salvas;
       toast(`${plural(falhas, 'foto não foi salva', 'fotos não foram salvas')}: ${motivo}`, { tipo: 'erro', duracao: 6000 });
     } else {
-      toast(salvas === 1 ? 'Foto salva no aparelho.' : `${salvas} fotos salvas no aparelho.`, { tipo: 'sucesso' });
+      toast(salvas === 1
+        ? 'Foto salva no aparelho, pronta para sincronizar.'
+        : `${salvas} fotos salvas no aparelho, prontas para sincronizar.`, { tipo: 'sucesso' });
     }
     return salvas;
   }
@@ -215,6 +236,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
               <strong>Identificar fotos</strong>
               <small id="id-posicao"></small>
             </div>
+            <button type="button" class="btn-remover" data-acao="remover">Remover foto</button>
           </div>
           <div class="progresso"><div class="progresso-barra" id="id-barra"></div></div>
 
@@ -222,21 +244,20 @@ export async function render(el, { params, sessao, definirCabecalho }) {
 
           <div class="identificar-campos">
             <label class="campo">
-              <span>${esc(rotuloItem)} ${teste.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
+              <span>${esc(rotuloItem)} ${regras.itemObrigatorio ? '<strong class="obrigatorio">*</strong>' : '<em>(opcional)</em>'}</span>
               <input id="id-item" autocomplete="off" autocapitalize="characters" aria-describedby="id-erro"
-                     ${teste.itemObrigatorio ? 'required aria-required="true"' : ''}>
+                     ${regras.itemObrigatorio ? 'required aria-required="true"' : ''}>
               <small class="campo-erro" id="id-erro" hidden>Preencha este campo para continuar.</small>
             </label>
             <label class="campo">
               <span>Observação <em>(opcional)</em></span>
-              <textarea id="id-obs" rows="2"></textarea>
+              <textarea id="id-obs" rows="1"></textarea>
             </label>
 
             <div class="dialogo-acoes">
               <button type="button" class="btn btn-secundario" data-acao="anterior">Anterior</button>
-              <button type="submit" class="btn btn-primario" id="id-avancar">Próxima</button>
+              <button type="submit" class="btn btn-primario" id="id-avancar">OK</button>
             </div>
-            <button type="button" class="btn btn-texto btn-remover" data-acao="remover">${icone('lixeira')} Remover esta foto da seleção</button>
           </div>
         </form>`, {
         classe: 'dialogo-tela-cheia',
@@ -279,10 +300,8 @@ export async function render(el, { params, sessao, definirCabecalho }) {
         campoItem.enterKeyHint = ultima ? 'done' : 'next';
         mostrarErro(false);
         btnAnterior.disabled = atual === 0;
-        btnAvancar.textContent = ultima
-          ? `Salvar ${plural(fotos.length, 'foto', 'fotos')}`
-          : 'Próxima';
-        campoItem.focus();
+        btnAvancar.textContent = ultima && fotos.length > 1 ? 'OK, salvar todas' : 'OK';
+        // Sem foco automático: o teclado não abre sozinho e a foto aparece inteira primeiro.
       }
 
       async function cancelar() {
@@ -302,7 +321,7 @@ export async function render(el, { params, sessao, definirCabecalho }) {
       form.addEventListener('submit', (ev) => {
         ev.preventDefault();
         guardarAtual();
-        if (teste.itemObrigatorio && !fotos[atual].itemId) {
+        if (regras.itemObrigatorio && !fotos[atual].itemId) {
           mostrarErro(true);
           campoItem.focus();
           return;
@@ -354,10 +373,10 @@ export async function render(el, { params, sessao, definirCabecalho }) {
           ${r.itemId ? `<dt>${esc(rotuloItem)}</dt><dd>${esc(r.itemId)}</dd>` : ''}
           ${r.observacao ? `<dt>Observação</dt><dd>${esc(r.observacao)}</dd>` : ''}
           <dt>Registrada em</dt><dd>${formatarDataHora(r.criadoEm)}</dd>
-          <dt>Auditado</dt><dd>${esc(r.usuario)}</dd>
+          <dt>Auditado</dt><dd>${esc(r.usuarioNome || r.usuario)}</dd>
           <dt>Arquivo</dt><dd>${r.largura}×${r.altura} · ${formatarBytes(r.fotoTamanho)}</dd>
           ${r.sincronizadoEm ? `<dt>Sincronizada em</dt><dd>${formatarDataHora(r.sincronizadoEm)}</dd>` : ''}
-          ${r.status === STATUS.ERRO && r.ultimoErro ? `<dt>Último erro</dt><dd class="texto-erro">${esc(r.ultimoErro)}</dd>` : ''}
+          ${(r.status === STATUS.ERRO || r.status === STATUS.REJEITADA) && r.ultimoErro ? `<dt>${r.status === STATUS.REJEITADA ? 'Motivo' : 'Último erro'}</dt><dd class="texto-erro">${esc(r.ultimoErro)}</dd>` : ''}
         </dl>
         <div class="dialogo-acoes">
           <button type="button" class="btn btn-perigo-contorno" data-acao="excluir"
@@ -392,5 +411,17 @@ export async function render(el, { params, sessao, definirCabecalho }) {
   });
 
   await carregarGrade();
+
+  // Orientação do auditor (GET /testes/{modulo}/{id}), guardada para uso offline.
+  if (navigator.onLine) {
+    atualizarDetalhe(teste.modulo, teste.id)
+      .then((d) => {
+        const p = $('#orientacao', el);
+        p.textContent = d.orientacao || '';
+        p.hidden = !d.orientacao;
+      })
+      .catch(() => { /* sem orientação nova; segue com a guardada */ });
+  }
+
   return liberarUrls;
 }

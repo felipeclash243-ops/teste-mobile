@@ -1,69 +1,48 @@
 /**
- * Autenticação e sessão.
+ * Login e sessão (contrato, seção 3).
  *
- * Com API configurada: o login é validado no sistema web, que devolve um token.
- * Modo demonstração: aceita qualquer usuário com CONFIG.DEMO_SENHA.
- *
- * A sessão fica salva no aparelho por CONFIG.SESSAO_HORAS para permitir uso offline.
+ * A sessão local guarda o usuário e o refresh_token (30 dias, rotativo).
+ * Enquanto o refresh_token for válido, o app abre mesmo sem internet;
+ * o access_token é obtido sob demanda quando houver conexão.
  */
-import { CONFIG, MODO_DEMO } from './config.js';
-import { getMeta, setMeta, delMeta, contarPorStatus } from './db.js';
-import { confirmar, plural } from './ui.js';
-
-let sessaoAtual = null;
+import { getMeta, setMeta, contarPorStatus } from './db.js';
+import { requisicao, guardarTokens, apagarSessaoLocal, obterDeviceId, nomeDoAparelho } from './api.js';
+import { confirmar, plural, toast } from './ui.js';
 
 export async function obterSessao() {
-  if (!sessaoAtual) sessaoAtual = (await getMeta('sessao')) || null;
-  if (sessaoAtual && sessaoAtual.expiraEm < Date.now()) {
-    await sair();
+  const sessao = await getMeta('sessao');
+  if (!sessao?.refresh_token || !sessao.usuario) return null;
+  if (Date.parse(sessao.refresh_expira_em) < Date.now()) {
+    await apagarSessaoLocal();
+    return null;
   }
-  return sessaoAtual;
+  return sessao;
 }
 
-export async function entrar(usuario, senha) {
-  usuario = usuario.trim();
-  if (!usuario || !senha) throw new Error('Informe usuário e senha.');
-
-  let dados;
-  if (MODO_DEMO) {
-    if (senha !== CONFIG.DEMO_SENHA) throw new Error('Senha incorreta.');
-    dados = { nome: usuario, token: null };
-  } else {
-    if (!navigator.onLine) throw new Error('O primeiro acesso precisa de internet.');
-    let resp;
-    try {
-      resp = await fetch(`${CONFIG.API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuario, senha }),
-      });
-    } catch {
-      throw new Error('Não foi possível conectar ao servidor.');
-    }
-    if (resp.status === 401) throw new Error('Usuário ou senha inválidos.');
-    if (!resp.ok) throw new Error(`Falha no login (HTTP ${resp.status}).`);
-    dados = await resp.json();
-  }
-
-  sessaoAtual = {
-    usuario,
-    nome: dados.nome || usuario,
-    token: dados.token || null,
-    expiraEm: Date.now() + CONFIG.SESSAO_HORAS * 3600 * 1000,
-  };
-  await setMeta('sessao', sessaoAtual);
-  await setMeta('ultimoUsuario', usuario);
+export async function entrar(email, senha) {
+  email = email.trim().toLowerCase();
+  if (!email || !senha) throw new Error('Informe e-mail e senha.');
+  const r = await requisicao('/auth/login', {
+    metodo: 'POST',
+    autenticar: false,
+    json: { email, senha, device_id: await obterDeviceId(), device_nome: nomeDoAparelho() },
+  });
+  await guardarTokens(r);
+  await setMeta('ultimoEmail', email);
 
   // Pede ao navegador para não apagar o banco local em caso de pouco espaço.
   navigator.storage?.persist?.().catch(() => {});
-
-  return sessaoAtual;
+  return obterSessao();
 }
 
 /** Encerra a sessão. As fotos não sincronizadas permanecem salvas no aparelho. */
 export async function sair() {
-  sessaoAtual = null;
-  await delMeta('sessao');
+  if (navigator.onLine) {
+    try {
+      await requisicao('/auth/logout', { metodo: 'POST', timeout: 5000 });
+    } catch { /* sem conexão ou sessão já expirada: basta apagar localmente */ }
+  }
+  await apagarSessaoLocal();
 }
 
 export async function sairComConfirmacao() {
@@ -81,6 +60,25 @@ export async function sairComConfirmacao() {
   location.hash = '#/login';
 }
 
-export function ultimoUsuario() {
-  return getMeta('ultimoUsuario');
+/**
+ * Trata erros de sessão vindos da API em qualquer tela.
+ * Retorna true se o erro foi tratado (o chamador deve parar).
+ */
+export async function tratarErroDeSessao(erro) {
+  if (erro?.codigo === 'sessao_expirada') {
+    toast('Sua sessão expirou. Entre novamente; as fotos continuam salvas no aparelho.', { tipo: 'erro', duracao: 6000 });
+    await apagarSessaoLocal();
+    location.hash = '#/login';
+    return true;
+  }
+  if (erro?.codigo === 'versao_desatualizada') {
+    toast(erro.message || 'Esta versão do app está desatualizada. Feche e abra novamente para atualizar.', { tipo: 'erro', duracao: 8000 });
+    return true;
+  }
+  return false;
 }
+
+export function ultimoEmail() {
+  return getMeta('ultimoEmail');
+}
+
