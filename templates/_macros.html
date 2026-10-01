@@ -1,0 +1,37 @@
+{% macro csrf() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{% macro status_execucao(ex) -%}
+<span class="selo {{ 'selo-ok' if ex.concluido else 'selo-andamento' }}">{{ ex.status_label }}</span>
+{%- endmacro %}
+
+{% macro status_item(status) -%}
+{% if status == StatusItem.CONFORME %}<span class="selo selo-ok">Conforme</span>
+{% elif status == StatusItem.NAO_CONFORME %}<span class="selo selo-nc">Não conforme</span>
+{% elif status == StatusItem.NAO_SE_APLICA %}<span class="selo selo-na">Não se aplica</span>
+{% else %}<span class="selo selo-vazio">Sem resposta</span>{% endif %}
+{%- endmacro %}
+
+{% macro resumo_chips(r) -%}
+<div class="chips">
+  <span class="chip chip-ok" title="Conforme">✓ {{ r['C'] }}</span>
+  <span class="chip chip-nc" title="Não conforme">✕ {{ r['NC'] }}</span>
+  <span class="chip chip-na" title="Não se aplica">– {{ r['NA'] }}</span>
+  {% if r['pendentes'] %}<span class="chip" title="Sem resposta">? {{ r['pendentes'] }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro paginacao(pagina, endpoint, args={}) -%}
+{% if pagina.pages > 1 %}
+<nav class="paginacao" aria-label="Páginas">
+  {% if pagina.has_prev %}
+  <a class="btn btn-secundario" href="{{ url_for(endpoint, page=pagina.prev_num, **args) }}">‹ Anterior</a>
+  {% endif %}
+  <span>Página {{ pagina.page }} de {{ pagina.pages }}</span>
+  {% if pagina.has_next %}
+  <a class="btn btn-secundario" href="{{ url_for(endpoint, page=pagina.next_num, **args) }}">Próxima ›</a>
+  {% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}

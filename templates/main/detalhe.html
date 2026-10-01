@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ ex.titulo }}{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('main.historico') }}">‹ Realizados</a>
+  <h1>{{ ex.titulo }}</h1>
+  {{ m.status_execucao(ex) }}
+</header>
+
+<section class="cartao">
+  <dl class="dados">
+    <div><dt>Unidade</dt><dd>{{ ex.unidade.nome }}</dd></div>
+    <div><dt>Área</dt><dd>{{ ex.area.nome }}</dd></div>
+    <div><dt>Responsável</dt><dd>{{ ex.usuario.nome }}</dd></div>
+    <div><dt>Iniciado em</dt><dd>{{ ex.iniciado_em|data_hora }}</dd></div>
+    <div><dt>Concluído em</dt><dd>{{ ex.concluido_em|data_hora }}</dd></div>
+  </dl>
+  {{ m.resumo_chips(resumo) }}
+</section>
+
+<div class="linha-botoes">
+  {% if pode_editar %}
+  <a class="btn btn-primario" href="{{ url_for('main.preencher', execucao_id=ex.id) }}">Continuar preenchimento</a>
+  {% endif %}
+  {% if pode_reabrir %}
+  <form method="post" action="{{ url_for('main.reabrir', execucao_id=ex.id) }}"
+        data-confirm="Reabrir este checklist? O responsável poderá alterá-lo novamente.">
+    {{ m.csrf() }}
+    <button type="submit" class="btn btn-secundario">Reabrir</button>
+  </form>
+  {% endif %}
+  <button type="button" class="btn btn-secundario" data-imprimir>Imprimir</button>
+</div>
+
+<section class="secao">
+  <h2>Itens</h2>
+  {% for r in ex.respostas %}
+  <article class="cartao item-detalhe {% if r.status == 'NC' %}item-nc{% endif %}">
+    <div class="cartao-cabecalho">
+      <h3><span class="item-numero">{{ loop.index }}</span> {{ r.item_texto }}</h3>
+      {{ m.status_item(r.status) }}
+    </div>
+    {% if r.observacao %}<p class="observacao">{{ r.observacao }}</p>{% endif %}
+    {% if r.fotos %}
+    <div class="fotos">
+      {% for foto in r.fotos %}
+      <a class="foto" href="{{ url_for('main.foto', foto_id=foto.id) }}" target="_blank" rel="noopener">
+        <img src="{{ url_for('main.foto', foto_id=foto.id) }}" alt="Foto anexada ao item" loading="lazy">
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

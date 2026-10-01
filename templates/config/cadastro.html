@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ cfg.titulo }}{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('config.index') }}">‹ Configuração</a>
+  <h1>{{ cfg.titulo }}</h1>
+</header>
+
+<form method="post" class="cartao busca">
+  {{ m.csrf() }}
+  <input type="text" name="nome" required maxlength="100" placeholder="Nome da nova {{ cfg.singular }}" aria-label="Nome">
+  <button type="submit" class="btn btn-primario">Adicionar</button>
+</form>
+
+<section class="secao">
+  {% for obj in registros %}
+  <div class="cartao cadastro-linha {% if not obj.ativo %}inativo{% endif %}">
+    <form method="post" action="{{ url_for('config.cadastro_acao', tipo=tipo, obj_id=obj.id, acao='renomear') }}" class="busca">
+      {{ m.csrf() }}
+      <input type="text" name="nome" required maxlength="100" value="{{ obj.nome }}" aria-label="Nome">
+      <button type="submit" class="btn btn-secundario">Salvar</button>
+    </form>
+    <div class="linha-botoes">
+      {% if not obj.ativo %}<span class="selo selo-vazio">Inativa</span>{% endif %}
+      <form method="post" action="{{ url_for('config.cadastro_acao', tipo=tipo, obj_id=obj.id, acao='alternar') }}">
+        {{ m.csrf() }}<button type="submit" class="btn btn-texto">{{ 'Desativar' if obj.ativo else 'Ativar' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('config.cadastro_acao', tipo=tipo, obj_id=obj.id, acao='remover') }}"
+            data-confirm="Remover “{{ obj.nome }}”?">
+        {{ m.csrf() }}<button type="submit" class="btn btn-texto btn-perigo">Remover</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="vazio vazio-compacto"><p>Nada cadastrado ainda.</p></div>
+  {% endfor %}
+</section>
+{% endblock %}

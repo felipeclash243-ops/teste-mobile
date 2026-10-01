@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Configuração{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <h1>Configuração</h1>
+  <p class="texto-suave">
+    {{ current_user.perfil_label }}{% if current_user.area %} · {{ current_user.area.nome }}{% endif %}
+  </p>
+</header>
+
+<nav class="lista-menu">
+  <a href="{{ url_for('config.perfil') }}">
+    <strong>Meus dados</strong><span>Ver seus dados e trocar a senha</span>
+  </a>
+  <a href="{{ url_for('config.usuarios') }}">
+    <strong>Usuários</strong>
+    <span>{{ 'Todos os usuários da plataforma' if current_user.is_admin_plus else 'Analistas da sua área' }}</span>
+  </a>
+  <a href="{{ url_for('config.modelos') }}">
+    <strong>Checklists</strong>
+    <span>{{ 'Modelos de todas as áreas' if current_user.is_admin_plus else 'Modelos da sua área' }}</span>
+  </a>
+  {% if current_user.is_admin_plus %}
+  <a href="{{ url_for('config.cadastro', tipo='areas') }}">
+    <strong>Áreas</strong><span>Engenharia, T.I., Jurídico…</span>
+  </a>
+  <a href="{{ url_for('config.cadastro', tipo='unidades') }}">
+    <strong>Unidades</strong><span>Filiais onde os checklists são realizados</span>
+  </a>
+  <a href="{{ url_for('config.auditoria') }}">
+    <strong>Auditoria</strong><span>Registro de acessos e alterações</span>
+  </a>
+  {% endif %}
+</nav>
+{% endblock %}

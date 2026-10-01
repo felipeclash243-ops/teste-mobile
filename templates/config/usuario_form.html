@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ 'Editar usuário' if alvo else 'Novo usuário' }}{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('config.usuarios') }}">‹ Usuários</a>
+  <h1>{{ 'Editar usuário' if alvo else 'Novo usuário' }}</h1>
+  {% if alvo and alvo.esta_bloqueado() %}
+  <div class="aviso aviso-error">Acesso bloqueado por tentativas de login até {{ alvo.bloqueado_ate|data_hora }}.</div>
+  {% endif %}
+</header>
+
+<form method="post" class="cartao formulario" autocomplete="off">
+  {{ m.csrf() }}
+  <label class="campo"><span>Nome completo</span>
+    <input type="text" name="nome" required maxlength="120" value="{{ form.get('nome', '') }}">
+  </label>
+  <label class="campo"><span>E-mail</span>
+    <input type="email" name="email" required maxlength="255" autocapitalize="none" value="{{ form.get('email', '') }}">
+  </label>
+
+  {% if perfis|length > 1 %}
+  <label class="campo"><span>Perfil</span>
+    <select name="perfil" required>
+      {% for p in perfis %}<option value="{{ p }}" {% if form.get('perfil') == p %}selected{% endif %}>{{ Perfil.LABELS[p] }}</option>{% endfor %}
+    </select>
+    <small>Admin+: acesso total · Admin: gerencia a própria área · Analista: só preenche checklists.</small>
+  </label>
+  {% else %}
+  <input type="hidden" name="perfil" value="{{ perfis[0] }}">
+  <p class="campo-fixo"><span>Perfil</span> {{ Perfil.LABELS[perfis[0]] }}</p>
+  {% endif %}
+
+  {% if current_user.is_admin_plus %}
+  <label class="campo"><span>Área</span>
+    <select name="area_id">
+      <option value="">— Nenhuma (somente Admin+) —</option>
+      {% for a in areas %}<option value="{{ a.id }}" {% if form.get('area_id') == a.id %}selected{% endif %}>{{ a.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  {% else %}
+  <p class="campo-fixo"><span>Área</span> {{ current_user.area.nome }}</p>
+  {% endif %}
+
+  <label class="campo"><span>Unidade</span>
+    <select name="unidade_id">
+      <option value="">— Nenhuma —</option>
+      {% for u in unidades %}<option value="{{ u.id }}" {% if form.get('unidade_id') == u.id %}selected{% endif %}>{{ u.nome }}</option>{% endfor %}
+    </select>
+    <small>Obrigatória para analistas.</small>
+  </label>
+
+  <label class="campo"><span>{{ 'Nova senha (deixe em branco para manter)' if alvo else 'Senha inicial' }}</span>
+    <input type="password" name="senha" {% if not alvo %}required{% endif %} minlength="10" maxlength="128" autocomplete="new-password">
+    <small>Mínimo de 10 caracteres, com maiúscula, minúscula, número e símbolo. Informe ao usuário por um canal seguro.</small>
+  </label>
+
+  {% if alvo %}
+  <label class="campo-check">
+    <input type="checkbox" name="ativo" value="1" {% if form.get('ativo') %}checked{% endif %}>
+    <span>Usuário ativo (pode entrar no sistema)</span>
+  </label>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primario">Salvar</button>
+</form>
+
+{% if alvo %}
+<div class="linha-botoes">
+  {% if alvo.esta_bloqueado() %}
+  <form method="post" action="{{ url_for('config.usuario_desbloquear', usuario_id=alvo.id) }}">
+    {{ m.csrf() }}<button type="submit" class="btn btn-secundario">Desbloquear acesso</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('config.usuario_remover', usuario_id=alvo.id) }}"
+        data-confirm="Remover este usuário? Se ele tiver checklists registrados, será apenas desativado.">
+    {{ m.csrf() }}<button type="submit" class="btn btn-texto btn-perigo">Remover usuário</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

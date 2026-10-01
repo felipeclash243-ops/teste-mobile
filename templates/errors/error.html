@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Erro{% endblock %}
+{% block content %}
+<section class="vazio">
+  <p class="vazio-codigo">{{ codigo }}</p>
+  <h1>Algo não saiu como esperado</h1>
+  <p class="texto-suave">{{ mensagem }}</p>
+  <a class="btn btn-primario" href="{{ url_for('main.home') }}">Voltar para o início</a>
+</section>
+{% endblock %}

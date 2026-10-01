@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ ex.titulo }}{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('main.home') }}">‹ Home</a>
+  <h1>{{ ex.titulo }}</h1>
+  <p class="texto-suave">{{ ex.unidade.nome }} · {{ ex.area.nome }} · iniciado em {{ ex.iniciado_em|data_hora }}</p>
+  <div class="progresso" data-progresso>
+    <progress max="{{ ex.respostas|length }}" value="0"></progress>
+    <span data-progresso-texto>0/{{ ex.respostas|length }}</span>
+  </div>
+</header>
+
+<div class="legenda">
+  <span><b class="ponto ponto-ok"></b> Conforme</span>
+  <span><b class="ponto ponto-nc"></b> Não conforme</span>
+  <span><b class="ponto ponto-na"></b> Não se aplica</span>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="formulario-checklist" id="form-checklist">
+  {{ m.csrf() }}
+  {% for r in ex.respostas %}
+  <fieldset class="cartao item {% if r.status == 'NC' %}item-nc{% endif %}" data-item>
+    <legend class="item-titulo"><span class="item-numero">{{ loop.index }}</span> {{ r.item_texto }}</legend>
+
+    <div class="segmentado" role="radiogroup" aria-label="Resultado do item {{ loop.index }}">
+      {% for valor, rotulo in [('C', 'Conforme'), ('NC', 'Não conforme'), ('NA', 'Não se aplica')] %}
+      <label class="seg seg-{{ valor|lower }}">
+        <input type="radio" name="status_{{ r.id }}" value="{{ valor }}" {% if r.status == valor %}checked{% endif %}>
+        <span>{{ rotulo }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <label class="campo">
+      <span class="texto-pequeno">Observação <em class="obrigatorio-nc">(obrigatória para “Não conforme”)</em></span>
+      <textarea name="obs_{{ r.id }}" rows="2" maxlength="2000" placeholder="Descreva o que encontrou (opcional)">{{ r.observacao or '' }}</textarea>
+    </label>
+
+    {% if r.fotos %}
+    <div class="fotos">
+      {% for foto in r.fotos %}
+      <figure class="foto">
+        <a href="{{ url_for('main.foto', foto_id=foto.id) }}" target="_blank" rel="noopener">
+          <img src="{{ url_for('main.foto', foto_id=foto.id) }}" alt="Foto do item {{ loop.index }}" loading="lazy">
+        </a>
+        <label class="foto-remover"><input type="checkbox" name="remover_foto" value="{{ foto.id }}"> Remover</label>
+      </figure>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if r.fotos|length < max_fotos %}
+    <label class="btn btn-secundario btn-arquivo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      Adicionar foto
+      <input type="file" name="fotos_{{ r.id }}" accept="image/jpeg,image/png,image/webp" multiple
+             data-foto data-max="{{ max_fotos - r.fotos|length }}">
+    </label>
+    <div class="fotos fotos-previa" data-previa></div>
+    {% endif %}
+  </fieldset>
+  {% endfor %}
+
+  <div class="barra-acoes">
+    <button type="submit" name="acao" value="salvar" class="btn btn-secundario">Salvar rascunho</button>
+    <button type="submit" name="acao" value="concluir" class="btn btn-primario"
+            data-confirm="Concluir o checklist? Depois de concluído ele não poderá ser alterado.">Concluir</button>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('main.descartar', execucao_id=ex.id) }}" class="descartar"
+      data-confirm="Descartar este rascunho? As respostas e fotos serão apagadas.">
+  {{ m.csrf() }}
+  <button type="submit" class="btn btn-texto btn-perigo">Descartar rascunho</button>
+</form>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<section class="login">
+  <div class="cartao login-cartao">
+    <h1>Entrar</h1>
+    <p class="texto-suave">Use o e-mail e a senha cadastrados pela sua área.</p>
+    <form method="post" action="{{ url_for('auth.login') }}" class="formulario">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="campo">
+        <span>E-mail</span>
+        <input type="email" name="email" required autocomplete="username" inputmode="email"
+               autocapitalize="none" maxlength="255" value="{{ request.form.get('email', '') }}">
+      </label>
+      <label class="campo">
+        <span>Senha</span>
+        <input type="password" name="senha" required autocomplete="current-password" maxlength="256">
+      </label>
+      <button type="submit" class="btn btn-primario btn-bloco">Entrar</button>
+    </form>
+    <p class="texto-suave texto-pequeno">Esqueceu a senha? Peça ao administrador da sua área para redefini-la.</p>
+  </div>
+</section>
+{% endblock %}

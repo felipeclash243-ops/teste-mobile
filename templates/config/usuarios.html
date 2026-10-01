@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Usuários{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('config.index') }}">‹ Configuração</a>
+  <div class="titulo-com-acao">
+    <h1>Usuários</h1>
+    <a class="btn btn-primario" href="{{ url_for('config.usuario_novo') }}">+ Novo</a>
+  </div>
+</header>
+
+<form method="get" class="busca">
+  <input type="search" name="q" value="{{ termo }}" placeholder="Buscar por nome ou e-mail" maxlength="100" aria-label="Buscar">
+  <button type="submit" class="btn btn-secundario">Buscar</button>
+</form>
+
+<section class="secao">
+  {% for u in pagina.items %}
+  {% set editavel = pode_gerenciar(current_user, u) %}
+  {% if editavel %}<a class="cartao cartao-link" href="{{ url_for('config.usuario_editar', usuario_id=u.id) }}">
+  {% else %}<div class="cartao">{% endif %}
+    <div class="cartao-cabecalho">
+      <h3>{{ u.nome }}{% if u.id == current_user.id %} (você){% endif %}</h3>
+      {% if not u.ativo %}<span class="selo selo-vazio">Inativo</span>
+      {% elif u.esta_bloqueado() %}<span class="selo selo-nc">Bloqueado</span>
+      {% else %}<span class="selo selo-neutro">{{ u.perfil_label }}</span>{% endif %}
+    </div>
+    <p class="meta">{{ u.email }}<br>
+      {{ u.area.nome if u.area else 'Sem área' }} · {{ u.unidade.nome if u.unidade else 'Sem unidade' }}
+    </p>
+  {% if editavel %}</a>{% else %}</div>{% endif %}
+  {% else %}
+  <div class="vazio vazio-compacto"><p>Nenhum usuário encontrado.</p></div>
+  {% endfor %}
+</section>
+
+{{ m.paginacao(pagina, 'config.usuarios', {'q': termo} if termo else {}) }}
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Realizados{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <h1>Checklists realizados</h1>
+  <p class="texto-suave">{{ pagina.total }} {{ 'registro' if pagina.total == 1 else 'registros' }}</p>
+</header>
+
+<details class="cartao filtros" {% if filtros %}open{% endif %}>
+  <summary>Filtros{% if filtros %} <span class="contador">{{ filtros|length }}</span>{% endif %}</summary>
+  <form method="get" class="grade-filtros">
+    <label class="campo"><span>De</span><input type="date" name="de" value="{{ filtros.get('de', '') }}"></label>
+    <label class="campo"><span>Até</span><input type="date" name="ate" value="{{ filtros.get('ate', '') }}"></label>
+    {% if unidades|length > 1 %}
+    <label class="campo"><span>Unidade</span>
+      <select name="unidade">
+        <option value="">Todas</option>
+        {% for u in unidades %}<option value="{{ u.id }}" {% if filtros.get('unidade') == u.id %}selected{% endif %}>{{ u.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    {% if areas|length > 1 %}
+    <label class="campo"><span>Área</span>
+      <select name="area">
+        <option value="">Todas</option>
+        {% for a in areas %}<option value="{{ a.id }}" {% if filtros.get('area') == a.id %}selected{% endif %}>{{ a.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label class="campo"><span>Responsável</span>
+      <select name="responsavel">
+        <option value="">Todos</option>
+        {% for u in responsaveis %}<option value="{{ u.id }}" {% if filtros.get('responsavel') == u.id %}selected{% endif %}>{{ u.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="campo"><span>Situação</span>
+      <select name="status">
+        <option value="">Todas</option>
+        {% for valor, rotulo in StatusExecucao.LABELS.items() %}<option value="{{ valor }}" {% if filtros.get('status') == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="linha-botoes">
+      <button type="submit" class="btn btn-primario">Filtrar</button>
+      <a class="btn btn-texto" href="{{ url_for('main.historico') }}">Limpar</a>
+    </div>
+  </form>
+</details>
+
+<section class="secao">
+  {% for ex in pagina.items %}
+  <a class="cartao cartao-link" href="{{ url_for('main.detalhe', execucao_id=ex.id) }}">
+    <div class="cartao-cabecalho">
+      <h3>{{ ex.titulo }}</h3>
+      {{ m.status_execucao(ex) }}
+    </div>
+    <p class="meta">
+      {{ ex.unidade.nome }} · {{ ex.area.nome }} · {{ ex.usuario.nome }}<br>
+      {{ (ex.concluido_em or ex.iniciado_em)|data_hora }}
+    </p>
+    {{ m.resumo_chips(ex.resumo()) }}
+  </a>
+  {% else %}
+  <div class="vazio vazio-compacto"><p>Nenhum checklist encontrado.</p></div>
+  {% endfor %}
+</section>
+
+{{ m.paginacao(pagina, 'main.historico', filtros) }}
+{% endblock %}

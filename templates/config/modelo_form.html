@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ 'Editar checklist' if modelo else 'Novo checklist' }}{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('config.modelos') }}">‹ Checklists</a>
+  <h1>{{ 'Editar checklist' if modelo else 'Novo checklist' }}</h1>
+</header>
+
+<form method="post" class="cartao formulario">
+  {{ m.csrf() }}
+  <label class="campo"><span>Título</span>
+    <input type="text" name="titulo" required maxlength="150" value="{{ form.get('titulo', '') }}"
+           placeholder="Ex.: Inspeção do gerador">
+  </label>
+  <label class="campo"><span>Descrição <em>(opcional)</em></span>
+    <textarea name="descricao" rows="2" maxlength="1000">{{ form.get('descricao') or '' }}</textarea>
+  </label>
+
+  {% if current_user.is_admin_plus %}
+  <label class="campo"><span>Área responsável</span>
+    <select name="area_id" required>
+      <option value="">Selecione…</option>
+      {% for a in areas %}<option value="{{ a.id }}" {% if form.get('area_id') == a.id %}selected{% endif %}>{{ a.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  {% else %}
+  <p class="campo-fixo"><span>Área</span> {{ current_user.area.nome }}</p>
+  {% endif %}
+
+  <label class="campo"><span>Frequência</span>
+    <select name="periodicidade">
+      {% for valor, rotulo in periodicidades.items() %}<option value="{{ valor }}" {% if form.get('periodicidade') == valor %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+    </select>
+    <small>Checklists diários, semanais ou mensais aparecem como “Pendentes” até serem concluídos no período.</small>
+  </label>
+
+  <fieldset class="campo">
+    <legend>Unidades</legend>
+    <small>Deixe tudo desmarcado para valer em todas as unidades.</small>
+    <div class="grade-checks">
+      {% for u in unidades %}
+      <label class="campo-check"><input type="checkbox" name="unidades" value="{{ u.id }}" {% if u.id in form.get('unidades', []) %}checked{% endif %}><span>{{ u.nome }}</span></label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  <label class="campo"><span>Itens do checklist</span>
+    <textarea name="itens" rows="10" required placeholder="Um item por linha. Ex.:&#10;Extintores dentro da validade&#10;Quadro elétrico identificado">{{ form.get('itens', '') }}</textarea>
+    <small>Escreva <strong>um item por linha</strong>. A ordem das linhas é a ordem do checklist. Alterar os itens não muda checklists já preenchidos.</small>
+  </label>
+
+  {% if modelo %}
+  <label class="campo-check">
+    <input type="checkbox" name="ativo" value="1" {% if form.get('ativo') %}checked{% endif %}>
+    <span>Ativo (aparece na Home para preenchimento)</span>
+  </label>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primario">Salvar</button>
+</form>
+
+{% if modelo %}
+<form method="post" action="{{ url_for('config.modelo_remover', modelo_id=modelo.id) }}" class="descartar"
+      data-confirm="Remover este checklist? Se já foi utilizado, será apenas desativado.">
+  {{ m.csrf() }}<button type="submit" class="btn btn-texto btn-perigo">Remover checklist</button>
+</form>
+{% endif %}
+{% endblock %}

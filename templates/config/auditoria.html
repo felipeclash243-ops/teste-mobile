@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Auditoria{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  <a class="voltar" href="{{ url_for('config.index') }}">‹ Configuração</a>
+  <h1>Auditoria</h1>
+</header>
+
+<form method="get" class="busca">
+  <input type="search" name="q" value="{{ termo }}" placeholder="Filtrar por ação, e-mail ou alvo" maxlength="100" aria-label="Filtrar">
+  <button type="submit" class="btn btn-secundario">Filtrar</button>
+</form>
+
+<div class="tabela-rolagem">
+  <table class="tabela">
+    <thead><tr><th>Data</th><th>Ação</th><th>Usuário</th><th>Alvo</th><th>Detalhe</th><th>IP</th></tr></thead>
+    <tbody>
+      {% for log in pagina.items %}
+      <tr>
+        <td>{{ log.criado_em|data_hora }}</td>
+        <td><code>{{ log.acao }}</code></td>
+        <td>{{ log.email or '—' }}</td>
+        <td>{{ log.alvo or '—' }}</td>
+        <td>{{ log.detalhe or '' }}</td>
+        <td>{{ log.ip or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">Nenhum registro.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{{ m.paginacao(pagina, 'config.auditoria', {'q': termo} if termo else {}) }}
+{% endblock %}

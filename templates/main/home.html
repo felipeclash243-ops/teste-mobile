@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Home{% endblock %}
+
+{% macro card_modelo(card, destaque=False) %}
+{% set modelo = card.modelo %}
+<article class="cartao cartao-checklist {{ 'cartao-pendente' if destaque }}">
+  <div class="cartao-cabecalho">
+    <h3>{{ modelo.titulo }}</h3>
+    <span class="selo selo-neutro">{{ modelo.periodicidade_label }}</span>
+  </div>
+  {% if modelo.descricao %}<p class="texto-suave">{{ modelo.descricao }}</p>{% endif %}
+  <p class="meta">
+    {{ modelo.itens|length }} {{ 'item' if modelo.itens|length == 1 else 'itens' }}
+    · {{ modelo.area.nome }}
+    {% if card.ultima %} · Último: {{ card.ultima|data_hora }}{% endif %}
+  </p>
+  <form method="post" action="{{ url_for('main.iniciar', modelo_id=modelo.id) }}" class="linha-acao">
+    {{ m.csrf() }}
+    {% if not current_user.is_analista %}
+      {% if card.unidades %}
+      <label class="campo campo-compacto">
+        <span class="sr-only">Unidade</span>
+        <select name="unidade_id" required>
+          {% for u in card.unidades %}
+          <option value="{{ u.id }}" {% if u.id == current_user.unidade_id %}selected{% endif %}>{{ u.nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    {% endif %}
+    <button type="submit" class="btn btn-primario" {% if not card.unidades %}disabled{% endif %}>Iniciar</button>
+  </form>
+</article>
+{% endmacro %}
+
+{% block content %}
+<header class="cabecalho-pagina">
+  <h1>Olá, {{ current_user.nome.split(' ')[0] }}</h1>
+  <p class="texto-suave">
+    {{ current_user.perfil_label }}
+    {% if current_user.area %} · {{ current_user.area.nome }}{% endif %}
+    {% if current_user.unidade %} · {{ current_user.unidade.nome }}{% endif %}
+  </p>
+</header>
+
+{% if rascunhos %}
+<section class="secao">
+  <h2>Em andamento <span class="contador">{{ rascunhos|length }}</span></h2>
+  {% for ex in rascunhos %}
+  {% set r = ex.resumo() %}
+  <a class="cartao cartao-link" href="{{ url_for('main.preencher', execucao_id=ex.id) }}">
+    <div class="cartao-cabecalho">
+      <h3>{{ ex.titulo }}</h3>
+      <span class="selo selo-andamento">Continuar</span>
+    </div>
+    <p class="meta">{{ ex.unidade.nome }} · iniciado em {{ ex.iniciado_em|data_hora }}</p>
+    <div class="progresso" aria-label="{{ r.total - r.pendentes }} de {{ r.total }} respondidos">
+      <progress max="{{ r.total }}" value="{{ r.total - r.pendentes }}"></progress>
+      <span>{{ r.total - r.pendentes }}/{{ r.total }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if pendentes %}
+<section class="secao">
+  <h2>Pendentes <span class="contador contador-alerta">{{ pendentes|length }}</span></h2>
+  <p class="texto-suave texto-pequeno">Ainda não realizados no período atual (dia, semana ou mês).</p>
+  {% for card in pendentes %}{{ card_modelo(card, True) }}{% endfor %}
+</section>
+{% endif %}
+
+<section class="secao">
+  <h2>Disponíveis</h2>
+  {% for card in disponiveis %}
+    {{ card_modelo(card) }}
+  {% else %}
+    {% if not pendentes %}
+    <div class="vazio vazio-compacto">
+      <p>Nenhum checklist disponível para você no momento.</p>
+      {% if not current_user.is_analista %}
+      <a class="btn btn-secundario" href="{{ url_for('config.modelos') }}">Criar checklist</a>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="texto-suave">Os demais checklists aparecem aqui depois de concluídos no período.</p>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Meus dados{% endblock %}
+{% block content %}
+<header class="cabecalho-pagina">
+  {% if not current_user.is_analista %}<a class="voltar" href="{{ url_for('config.index') }}">‹ Configuração</a>{% endif %}
+  <h1>Meus dados</h1>
+</header>
+
+<section class="cartao">
+  <dl class="dados">
+    <div><dt>Nome</dt><dd>{{ current_user.nome }}</dd></div>
+    <div><dt>E-mail</dt><dd>{{ current_user.email }}</dd></div>
+    <div><dt>Perfil</dt><dd>{{ current_user.perfil_label }}</dd></div>
+    <div><dt>Área</dt><dd>{{ current_user.area.nome if current_user.area else '—' }}</dd></div>
+    <div><dt>Unidade</dt><dd>{{ current_user.unidade.nome if current_user.unidade else '—' }}</dd></div>
+    <div><dt>Último acesso</dt><dd>{{ current_user.ultimo_login|data_hora }}</dd></div>
+  </dl>
+  <p class="texto-suave texto-pequeno">Para corrigir nome, e-mail, área ou unidade, fale com o administrador.</p>
+</section>
+
+<section class="cartao">
+  <h2>Trocar senha</h2>
+  <form method="post" class="formulario">
+    {{ m.csrf() }}
+    <label class="campo"><span>Senha atual</span>
+      <input type="password" name="senha_atual" required autocomplete="current-password" maxlength="256">
+    </label>
+    <label class="campo"><span>Nova senha</span>
+      <input type="password" name="nova_senha" required autocomplete="new-password" minlength="10" maxlength="128">
+      <small>Mínimo de 10 caracteres, com letra maiúscula, minúscula, número e símbolo.</small>
+    </label>
+    <label class="campo"><span>Confirme a nova senha</span>
+      <input type="password" name="confirmacao" required autocomplete="new-password" minlength="10" maxlength="128">
+    </label>
+    <button type="submit" class="btn btn-primario">Salvar nova senha</button>
+  </form>
+</section>
+{% endblock %}
